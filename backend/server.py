@@ -64,24 +64,22 @@ def _run_ffmpeg(in_path: str, out_wav: str) -> None:
 
 def _transcribe(wav_path: str):
     """Run Basic Pitch and return list of (start, end, pitch, velocity)."""
-    from basic_pitch import api
-    import numpy as np
+    from basic_pitch.inference import predict
 
-    # api.predict accepts a path to a WAV file.
-    predictions = api.predict(wav_path)
-    # Basic Pitch returns (notes, onsets, frames).
-    # notes is an ndarray of shape (n, >=4): [onset_time, offset_time, pitch, velocity, ...]
-    notes_array = predictions[0]
-    if notes_array is None or len(notes_array) == 0:
+    # predict() returns (model_output, midi_data, note_events).
+    # note_events: list of (start_sec, end_sec, pitch_midi, amplitude_0_1, [pitch_bends])
+    _, _, note_events = predict(wav_path)
+
+    if not note_events:
         return []
 
     out = []
-    for row in notes_array:
+    for row in note_events:
         start_sec = float(row[0])
         end_sec = float(row[1])
         pitch = int(round(float(row[2])))
-        velocity = float(row[3])  # 0..1
-        vel_int = int(max(1, min(127, round(velocity * 127))))
+        amplitude = float(row[3])  # 0..1
+        vel_int = int(max(1, min(127, round(amplitude * 127))))
         if pitch < 0 or pitch > 127:
             continue
         if end_sec <= start_sec:

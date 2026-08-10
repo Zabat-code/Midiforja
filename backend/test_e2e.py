@@ -67,32 +67,33 @@ def _midi_name(m):
 
 def validate_with_midimate_parser(mid_bytes):
     """Load MidiMate's src/midi.js parser (ESM) via Node and run parseMidi+midiToNotes."""
-    import subprocess, tempfile, textwrap
+    import subprocess, textwrap
     midimate_midi = r"F:\ia.proyectos\MidiMate\src\midi.js"
     if not os.path.exists(midimate_midi):
         return "(MidiMate parser not found; skipped cross-check)"
-    mid_path = tempfile.mktemp(suffix=".mid")
+    import shutil
+    # Keep everything under HERE (a plain Windows path) so MSYS/bash node
+    # path translation does not corrupt it.
+    parser_copy = os.path.join(HERE, "_parser_copy.mjs")
+    shutil.copyfile(midimate_midi, parser_copy)
+    mid_path = os.path.join(HERE, "_check.mid")
     with open(mid_path, "wb") as f:
         f.write(mid_bytes)
-    import shutil
-    parser_copy = tempfile.mktemp(suffix=".mjs")
-    shutil.copyfile(midimate_midi, parser_copy)
-    parser_base = os.path.basename(parser_copy)
     runner = textwrap.dedent(f"""
-        import {{ parseMidi, midiToNotes }} from "./{parser_base}";
+        import {{ parseMidi, midiToNotes }} from "./_parser_copy.mjs";
         import fs from "fs";
-        const raw = fs.readFileSync("{mid_path}");
+        const raw = fs.readFileSync({mid_path!r});
         const buf = new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength);
         const parsed = parseMidi(buf);
         const notes = midiToNotes(parsed);
         console.log(JSON.stringify({{ ticksPerBeat: parsed.ticksPerBeat, tracks: parsed.tracks.length, noteCount: notes.length, first: notes.slice(0,3) }}));
     """)
-    rp = tempfile.mktemp(suffix=".mjs")
+    rp = os.path.join(HERE, "_runner.mjs")
     with open(rp, "w") as f:
         f.write(runner)
     try:
-        out = subprocess.run(["node", os.path.basename(rp)], capture_output=True, text=True, timeout=60,
-                             cwd=os.path.dirname(rp))
+        out = subprocess.run(["node", "_runner.mjs"], capture_output=True, text=True, timeout=60,
+                             cwd=HERE)
         if out.returncode != 0:
             return f"(node error) {out.stderr[:500]}"
         return out.stdout.strip()
