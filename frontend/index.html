@@ -25,13 +25,7 @@
         </label>
       </header>
 
-      <section
-        id="drop"
-        class="drop"
-        tabindex="0"
-        role="button"
-        aria-label="Upload area"
-      >
+      <section id="drop" class="drop" tabindex="0" role="button" aria-label="Upload area">
         <div class="drop-inner">
           <div class="drop-icon">⤓</div>
           <p id="drop_title" class="drop-title">Suelta aquí tu audio o video</p>
@@ -51,6 +45,26 @@
         <div class="bar"><div class="bar-fill" id="bar_fill"></div></div>
         <p class="status" id="status_text">Listo.</p>
       </div>
+
+      <div class="result-actions" id="result_actions" hidden>
+        <button id="open_midimate_btn" class="btn">
+          <span id="button_open_midimate">Abrir en MidiMate</span>
+        </button>
+        <button id="again_btn" class="btn">
+          <span id="button_again">Transcribir otro</span>
+        </button>
+      </div>
+
+      <details class="settings">
+        <summary id="settings_summary">Ajustes</summary>
+        <label class="setting">
+          <span id="settings_midimate_url">URL de MidiMate</span>
+          <input id="midimate_url" type="text" value="http://localhost:5173" />
+        </label>
+        <p class="setting-hint" id="settings_hint">
+          "Abrir en MidiMate" copia el .mid en la carpeta de MidiMate y abre la app.
+        </p>
+      </details>
 
       <p class="tip" id="tip"></p>
       <footer class="footer"><span id="footer"></span></footer>

@@ -6,8 +6,11 @@ pip.log
 backend/_parser_copy.mjs
 backend/_check.mid
 backend/_runner.mjs
+backend/files/
+backend/midimate_inbox/
 backend/sample_*.wav
 backend/*_output.mid
+.pytest_cache/
 
 # Node / Vite
 frontend/node_modules/

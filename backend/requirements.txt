@@ -1,5 +1,8 @@
 fastapi==0.115.6
 uvicorn==0.34.0
 python-multipart==0.0.20
-basic-pitch==0.6.1
+basic-pitch==0.4.0
 numpy==1.26.4
+# dev / tests
+pytest==9.1.1
+httpx==0.28.1
