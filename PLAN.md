@@ -36,11 +36,15 @@ Hecho y funcionando:
 - Repo git limpio, commiteado (`e58dbac`, `69f851e`, `3bb47bf`), `.venv/` ignorado.
 - Límites: 200 MB por archivo, formatos comunes de audio/video.
 
-NO hecho (diferido):
-- **OMR**: imagen/PDF de partitura → MIDI. Nunca empezado (acordado como fase 2).
-- **Multi-instrumento real**: Basic Pitch NO separa instrumentos (ver abajo).
-- **Deep-link "Abrir en MidiMate"**: solo descarga manual (como pediste).
-- **Suite de tests automática** (pytest): solo scripts manuales (`test_writer.py`, `test_e2e.py`).
+NO hecho / pendiente:
+- **OMR (Fase B)**: CABLEADO (endpoint `/api/transcribe-sheet` + `musicxml2midi.py` + pestaña
+  "Partitura" en el frontend). Falta instalar Audiveris (MSI no instala en esta máquina;
+  error 25003/103/67). Cuando lo instales, funciona solo. Define `MIDIFORJA_AUDIVERIS_BIN` si
+  no se detecta.
+- **Multi-instrumento real (Fase C)**: Basic Pitch NO separa instrumentos. Requiere
+  source separation (Demucs/PyTorch) antes de Basic Pitch. Pesado en CPU. Pendiente.
+- **Suite de tests automática (pytest)**: HECHA (9 passed) en `backend/tests/`.
+- **Deep-link "Abrir en MidiMate"**: HECHO (copia .mid a MidiMate/midiforja_inbox y abre la app).
 
 ---
 

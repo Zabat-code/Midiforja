@@ -25,21 +25,50 @@
         </label>
       </header>
 
-      <section id="drop" class="drop" tabindex="0" role="button" aria-label="Upload area">
-        <div class="drop-inner">
-          <div class="drop-icon">⤓</div>
-          <p id="drop_title" class="drop-title">Suelta aquí tu audio o video</p>
-          <p id="drop_hint" class="drop-hint">o haz clic para elegir</p>
-          <p id="max_size" class="drop-max">Tamaño máximo: 200 MB</p>
+      <nav class="tabs">
+        <button class="tab active" id="tab_audio" data-tab="audio">🎵 <span id="tab_audio_label">Audio / Video</span></button>
+        <button class="tab" id="tab_sheet" data-tab="sheet">🎼 <span id="tab_sheet_label">Partitura</span></button>
+      </nav>
+
+      <!-- AUDIO / VIDEO -->
+      <section id="panel_audio" class="panel">
+        <section id="drop" class="drop" tabindex="0" role="button" aria-label="Upload area">
+          <div class="drop-inner">
+            <div class="drop-icon">⤓</div>
+            <p id="drop_title" class="drop-title">Suelta aquí tu audio o video</p>
+            <p id="drop_hint" class="drop-hint">o haz clic para elegir</p>
+            <p id="max_size" class="drop-max">Tamaño máximo: 200 MB</p>
+          </div>
+          <input id="file_input" type="file" hidden />
+        </section>
+
+        <div class="actions">
+          <button id="transcribe_btn" class="btn primary" disabled>
+            <span id="button_transcribe">Transcribir a MIDI</span>
+          </button>
         </div>
-        <input id="file_input" type="file" hidden />
       </section>
 
-      <div class="actions">
-        <button id="transcribe_btn" class="btn primary" disabled>
-          <span id="button_transcribe">Transcribir a MIDI</span>
-        </button>
-      </div>
+      <!-- PARTITURA (OMR) -->
+      <section id="panel_sheet" class="panel" hidden>
+        <section id="drop_sheet" class="drop" tabindex="0" role="button" aria-label="Sheet upload">
+          <div class="drop-inner">
+            <div class="drop-icon">🎼</div>
+            <p id="sheet_title" class="drop-title">Suelta aquí una imagen o PDF de partitura</p>
+            <p id="sheet_hint" class="drop-hint">PNG, JPG o PDF (una sola página funciona mejor)</p>
+          </div>
+          <input id="sheet_input" type="file" accept=".png,.jpg,.jpeg,.pdf,.tiff,.bmp,.gif" hidden />
+        </section>
+
+        <div class="actions">
+          <button id="transcribe_sheet_btn" class="btn primary" disabled>
+            <span id="button_transcribe_sheet">Convertir partitura a MIDI</span>
+          </button>
+        </div>
+        <p class="setting-hint" id="sheet_note">
+          Requiere Audiveris instalado (OCR de partituras). Si falta, te avisamos.
+        </p>
+      </section>
 
       <div class="progress" id="progress" hidden>
         <div class="bar"><div class="bar-fill" id="bar_fill"></div></div>

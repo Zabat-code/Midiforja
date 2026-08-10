@@ -16,6 +16,8 @@ import os
 import shutil
 import tempfile
 import uuid
+import subprocess
+import glob
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,6 +38,67 @@ INBOX_DIR = os.path.join(HERE, "midimate_inbox")   # copies dropped into MidiMat
 # Config from env (override defaults as you like).
 MIDIMATE_DIR = os.environ.get("MIDIFORJA_MIDIMATE_DIR", r"F:\ia.proyectos\MidiMate")
 MIDIMATE_URL = os.environ.get("MIDIFORJA_MIDIMATE_URL", "http://localhost:5173")
+
+# --- OMR (Optical Music Recognition) via Audiveris -------------------------
+# Audiveris must be installed separately (Windows installer / MSI). Point this
+# at the `audiveris` CLI/launcher once installed. Common locations are searched
+# automatically if this is left as the default "" (empty).
+AUDIVERIS_BIN = os.environ.get("MIDIFORJA_AUDIVERIS_BIN", "")
+
+def _find_audiveris():
+    """Return path to the Audiveris launcher, or None if not installed."""
+    if AUDIVERIS_BIN and os.path.exists(AUDIVERIS_BIN):
+        return AUDIVERIS_BIN
+    candidates = [
+        os.path.join(os.environ.get("LOCALAPPDATA", ""), "Audiveris", "bin", "audiveris.bat"),
+        os.path.join(os.environ.get("LOCALAPPDATA", ""), "Audiveris", "bin", "audiveris"),
+        r"C:\Program Files\Audiveris\bin\audiveris.bat",
+        r"C:\Program Files (x86)\Audiveris\bin\audiveris.bat",
+    ]
+    # also scan LOCALAPPDATA/Audiveris for any audiveris* launcher
+    base = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Audiveris")
+    if os.path.isdir(base):
+        for hit in glob.glob(os.path.join(base, "**", "audiveris*"), recursive=True):
+            if os.path.basename(hit) in ("audiveris", "audiveris.bat", "audiveris.exe"):
+                candidates.insert(0, hit)
+    for c in candidates:
+        if c and os.path.exists(c):
+            return c
+    return None
+
+def _transcribe_sheet(image_path: str):
+    """Run Audiveris on an image/PDF, convert the MusicXML output to MIDI.
+
+    Returns (midi_bytes, note_count). Raises RuntimeError if Audiveris missing.
+    """
+    from musicxml2midi import musicxml_to_midi  # local module
+    bin_path = _find_audiveris()
+    if not bin_path:
+        raise RuntimeError(
+            "Audiveris no esta instalado. Instala Audiveris 5.x (MSI) y, si no se "
+            "detecta solo, define MIDIFORJA_AUDIVERIS_BIN con la ruta al launcher."
+        )
+    work = tempfile.mkdtemp(prefix="omr_")
+    # Audiveris batch export: -batch -export <input> ; writes into <input>-out/
+    cmd = [bin_path, "-batch", "-export", image_path]
+    res = subprocess.run(cmd, capture_output=True, text=True, cwd=work, timeout=600)
+    if res.returncode != 0:
+        raise RuntimeError("Audiveris fallo:\n" + (res.stderr or res.stdout)[-800:])
+    # find a MusicXML produced by Audiveris ( *.mxl or *.xml )
+    mxl = None
+    for pat in ("*.mxl", "*.xml", "*.musicxml"):
+        hits = glob.glob(os.path.join(work, "**", pat), recursive=True)
+        if hits:
+            mxl = hits[0]
+            break
+    if not mxl:
+        raise RuntimeError("Audiveris no produjo MusicXML. ¿La imagen/PDF es una partitura?")
+    with open(mxl, "r", encoding="utf-8", errors="ignore") as f:
+        xml_text = f.read()
+    midi_bytes = musicxml_to_midi(xml_text)
+    note_count = xml_text.count("<note")
+    return midi_bytes, note_count
+
 
 os.makedirs(FILES_DIR, exist_ok=True)
 os.makedirs(INBOX_DIR, exist_ok=True)
@@ -191,6 +254,52 @@ async def send_to_midimate(file: UploadFile = File(...)):
     })
 
 
+@app.post("/api/transcribe-sheet")
+async def transcribe_sheet(file: UploadFile = File(...)):
+    """OMR: image/PDF of a sheet -> MIDI via Audiveris + musicxml2midi.
+
+    Accepts .png/.jpg/.jpeg/.pdf/.tiff. Returns the .mid as a download with
+    X-Note-Count header. Requires Audiveris installed (see _find_audiveris).
+    """
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in {".png", ".jpg", ".jpeg", ".pdf", ".tiff", ".bmp", ".gif"}:
+        raise HTTPException(400, f"Tipo de archivo no soportado para OMR: {ext}")
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "Archivo vacío.")
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, "Archivo demasiado grande (máx 200 MB).")
+
+    tmp = tempfile.mkdtemp(prefix="sheet_")
+    src = os.path.join(tmp, "input" + ext)
+    with open(src, "wb") as f:
+        f.write(data)
+
+    try:
+        midi_bytes, note_count = _transcribe_sheet(src)
+    except RuntimeError as e:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise HTTPException(500, str(e))
+
+    # stash a copy for the deep-link
+    uid = uuid.uuid4().hex
+    stash = os.path.join(FILES_DIR, f"{uid}.mid")
+    with open(stash, "wb") as f:
+        f.write(midi_bytes)
+    shutil.rmtree(tmp, ignore_errors=True)
+
+    return Response(
+        content=midi_bytes,
+        media_type="audio/midi",
+        headers={
+            "Content-Disposition": 'attachment; filename="midiforja_sheet.mid"',
+            "X-Note-Count": str(note_count),
+            "X-Midi-Url": f"/files/{uid}.mid",
+        },
+    )
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info")
+
