@@ -7,8 +7,8 @@
 
 - **Backend** (Python 3.11): FastAPI + Spotify **Basic Pitch** (Apache-2.0) para la
   transcripción, `ffmpeg` para extraer audio de video, y un writer de Standard MIDI File
-  propio (`midiwriter.py`) que coloca las notas en ticks reales (segundos) para que suenen
-  a la velocidad correcta.
+  propio (`backend/midiwriter.py`) que coloca las notas en ticks reales (segundos) para que
+  suenen a la velocidad correcta.
 - **Frontend** (Vite + vanilla JS): subida de archivo (drag & drop), barra de progreso,
   descarga del `.mid`, e i18n **ES/EN** con switch.
 
@@ -26,18 +26,18 @@
 
 ## Cómo correr (dev)
 
-1. Backend:
+1. Backend (el venv de Python 3.11 vive en la raíz del repo, en `.venv/`):
    ```bat
-   cd backend
+   cd <repo>\Midiforja
    .venv\Scripts\activate
-   pip install -r requirements.txt
-   python server.py
+   pip install -r backend\requirements.txt
+   python backend\server.py
    ```
-   O usa `run_backend.bat`.
+   O usa `run_backend.bat` (ajusta la ruta del venv si lo reubicas).
 
 2. Frontend (en otra terminal):
    ```bat
-   cd frontend
+   cd <repo>\Midiforja\frontend
    npm install
    npx vite --port 5174
    ```
