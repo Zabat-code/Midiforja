@@ -1,0 +1,26 @@
+# Python
+backend/.venv/
+__pycache__/
+*.pyc
+pip.log
+backend/_parser_copy.mjs
+backend/_check.mid
+backend/_runner.mjs
+backend/sample_*.wav
+backend/*_output.mid
+
+# Node / Vite
+frontend/node_modules/
+frontend/dist/
+frontend/package-lock.json
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Temp / uploads
+*.tmp
+
+# venv anywhere
+**/.venv/
+.venv/
