@@ -114,9 +114,12 @@ def _read_musicxml(path: str) -> str:
     if lower.endswith(".mxl") or lower.endswith(".musicxml"):
         import zipfile
         with zipfile.ZipFile(path) as zf:
-            inner = [n for n in zf.namelist()
-                     if n.lower().endswith(".xml") and not n.lower().startswith("META-INF")]
-            target = inner[0] if inner else zf.namelist()[0]
+            # Skip the OEBPS/container manifest; pick the actual scorepartwise xml.
+            entries = [n.lower() for n in zf.namelist()]
+            score = [n for n in zf.namelist()
+                     if n.lower().endswith(".xml")
+                     and "meta-inf/" not in n.lower()]
+            target = score[0] if score else zf.namelist()[0]
             return zf.read(target).decode("utf-8", errors="ignore")
     with open(path, "r", encoding="utf-8", errors="ignore") as f:
         return f.read()
