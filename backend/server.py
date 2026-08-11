@@ -87,9 +87,10 @@ def _transcribe_sheet(image_path: str):
             "detecta solo, define MIDIFORJA_AUDIVERIS_BIN con la ruta al launcher."
         )
     work = tempfile.mkdtemp(prefix="omr_")
-    # Audiveris batch export: -batch -export -output <dir> <input>
-    # Produces a MusicXML (*.mxl / *.xml) in <dir>; we read it from there.
-    cmd = [bin_path, "-batch", "-export", "-output", work, image_path]
+    # Audiveris batch: -transcribe runs OMR symbol recognition, -export writes the
+    # MusicXML. Both are required; -export alone fails with "transcription did not
+    # complete successfully" because the score was never transcribed.
+    cmd = [bin_path, "-batch", "-transcribe", "-export", "-output", work, image_path]
     res = subprocess.run(cmd, capture_output=True, text=True, cwd=work, timeout=600)
     if res.returncode != 0:
         raise RuntimeError("Audiveris fallo:\n" + (res.stderr or res.stdout)[-800:])
