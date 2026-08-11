@@ -54,13 +54,21 @@ def _find_audiveris():
         os.path.join(os.environ.get("LOCALAPPDATA", ""), "Audiveris", "bin", "audiveris"),
         r"C:\Program Files\Audiveris\bin\audiveris.bat",
         r"C:\Program Files (x86)\Audiveris\bin\audiveris.bat",
+        r"C:\Program Files\Audiveris\Audiveris.exe",
+        r"C:\Program Files (x86)\Audiveris\Audiveris.exe",
     ]
-    # also scan LOCALAPPDATA/Audiveris for any audiveris* launcher
-    base = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Audiveris")
-    if os.path.isdir(base):
-        for hit in glob.glob(os.path.join(base, "**", "audiveris*"), recursive=True):
-            if os.path.basename(hit) in ("audiveris", "audiveris.bat", "audiveris.exe"):
-                candidates.insert(0, hit)
+    # also scan LOCALAPPDATA/Audiveris and Program Files for any audiveris* launcher
+    for base in (
+        os.path.join(os.environ.get("LOCALAPPDATA", ""), "Audiveris"),
+        r"C:\Program Files\Audiveris",
+        r"C:\Program Files (x86)\Audiveris",
+    ):
+        if os.path.isdir(base):
+            for hit in glob.glob(os.path.join(base, "**", "audiveris*"), recursive=True):
+                if os.path.isfile(hit) and os.path.basename(hit) in (
+                    "audiveris", "audiveris.bat", "audiveris.exe",
+                ):
+                    candidates.insert(0, hit)
     for c in candidates:
         if c and os.path.exists(c):
             return c
@@ -79,8 +87,9 @@ def _transcribe_sheet(image_path: str):
             "detecta solo, define MIDIFORJA_AUDIVERIS_BIN con la ruta al launcher."
         )
     work = tempfile.mkdtemp(prefix="omr_")
-    # Audiveris batch export: -batch -export <input> ; writes into <input>-out/
-    cmd = [bin_path, "-batch", "-export", image_path]
+    # Audiveris batch export: -batch -export -output <dir> <input>
+    # Produces a MusicXML (*.mxl / *.xml) in <dir>; we read it from there.
+    cmd = [bin_path, "-batch", "-export", "-output", work, image_path]
     res = subprocess.run(cmd, capture_output=True, text=True, cwd=work, timeout=600)
     if res.returncode != 0:
         raise RuntimeError("Audiveris fallo:\n" + (res.stderr or res.stdout)[-800:])
@@ -93,11 +102,24 @@ def _transcribe_sheet(image_path: str):
             break
     if not mxl:
         raise RuntimeError("Audiveris no produjo MusicXML. ¿La imagen/PDF es una partitura?")
-    with open(mxl, "r", encoding="utf-8", errors="ignore") as f:
-        xml_text = f.read()
+    xml_text = _read_musicxml(mxl)
     midi_bytes = musicxml_to_midi(xml_text)
     note_count = xml_text.count("<note")
     return midi_bytes, note_count
+
+
+def _read_musicxml(path: str) -> str:
+    """Read MusicXML text from a .xml (plain) or .mxl (zip-compressed) file."""
+    lower = path.lower()
+    if lower.endswith(".mxl") or lower.endswith(".musicxml"):
+        import zipfile
+        with zipfile.ZipFile(path) as zf:
+            inner = [n for n in zf.namelist()
+                     if n.lower().endswith(".xml") and not n.lower().startswith("META-INF")]
+            target = inner[0] if inner else zf.namelist()[0]
+            return zf.read(target).decode("utf-8", errors="ignore")
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+        return f.read()
 
 
 os.makedirs(FILES_DIR, exist_ok=True)

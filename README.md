@@ -54,6 +54,29 @@ El `.mid` es Standard MIDI File tipo 1, `ticksPerBeat = 480`, con un evento de t
 ( drag & drop / file input ). Midiforja NO está acoplado a MidiMate: el `.mid` sirve
 en cualquier DAW.
 
+## OMR — partitura → MIDI (Fase B, operativo)
+
+Además de audio/video, Midiforja puede transcribir una **imagen o PDF de partitura**
+a MIDI mediante [Audiveris](https://github.com/Audiveris/audiveris) (OMR, Apache-2.0).
+
+- Pestaña **"Partitura"** en el frontend: suelta un `.png/.jpg/.pdf/.tiff` y descarga el `.mid`.
+- Endpoint: `POST /api/transcribe-sheet`.
+- Audiveris debe estar instalado. Midiforja lo auto-detecta en las rutas comunes
+  (`C:\Program Files\Audiveris\Audiveris.exe`, `%LOCALAPPDATA%\Audiveris\...`). Si no se
+  detecta, define la variable `MIDIFORJA_AUDIVERIS_BIN` con la ruta al launcher.
+- El MusicXML (`.mxl`, que es un ZIP) lo convierte `backend/musicxml2midi.py` a Standard
+  MIDI File.
+
+## Capturas
+
+**Pestaña Audio / Video** — suelta un audio o video y descarga el `.mid`:
+
+![Pestaña Audio/Video](docs/screenshots/tab-audio.png)
+
+**Pestaña Partitura (OMR)** — suelta una imagen/PDF de partitura y descarga el `.mid`:
+
+![Pestaña Partitura](docs/screenshots/tab-sheet.png)
+
 ## Límites conocidos (básicos)
 
 - **Basic Pitch es instrument-agnostic y polifónico, pero funciona mejor con UN

@@ -37,10 +37,12 @@ Hecho y funcionando:
 - Límites: 200 MB por archivo, formatos comunes de audio/video.
 
 NO hecho / pendiente:
-- **OMR (Fase B)**: CABLEADO (endpoint `/api/transcribe-sheet` + `musicxml2midi.py` + pestaña
-  "Partitura" en el frontend). Falta instalar Audiveris (MSI no instala en esta máquina;
-  error 25003/103/67). Cuando lo instales, funciona solo. Define `MIDIFORJA_AUDIVERIS_BIN` si
-  no se detecta.
+- **OMR (Fase B)**: OPERATIVO. Audiveris 5.11 quedó instalado en `C:\Program Files\Audiveris`
+  y el auto-detect de `server.py` ahora lo encuentra (`Audiveris.exe`, no solo `bin/audiveris.bat`).
+  El endpoint `/api/transcribe-sheet` + `musicxml2midi.py` + pestaña "Partitura" funcionan
+  end-to-end (verificado: PNG de prueba → .mxl → .mid válido, HTTP 200). Si Audiveris no se
+  detecta, define `MIDIFORJA_AUDIVERIS_BIN`. Nota: el `.mxl` de Audiveris es un ZIP; `_read_musicxml`
+  lo descomprime.
 - **Multi-instrumento real (Fase C)**: Basic Pitch NO separa instrumentos. Requiere
   source separation (Demucs/PyTorch) antes de Basic Pitch. Pesado en CPU. Pendiente.
 - **Suite de tests automática (pytest)**: HECHA (9 passed) en `backend/tests/`.
@@ -68,22 +70,21 @@ Queda como **fase 3 opcional**, no para la v1.
 
 ## Pendiente / próximos pasos (sujetos a tu elección)
 
-A. Pulir v1
-   - [ ] Añadir test suite real (pytest) repetible.
-   - [ ] Deep-link "Abrir en MidiMate" (escribir .mid en carpeta de MidiMate o abrir).
-   - [ ] Manejo de errores más amigable (archivo sin audio, formato raro).
-   - [ ] README con capturas / demo.
+A. Pulir v1  [HECHO]
+   - [x] Suite pytest repetible (9 passed) en backend/tests/.
+   - [x] Deep-link "Abrir en MidiMate" (copia .mid a MidiMate/midiforja_inbox).
+   - [x] Manejo de errores amigable (archivo sin audio, formato raro).
+   - [ ] README con capturas / demo (en curso).
 
-B. OMR (fase 2) — partitura → MIDI
-   - Opción 1: Audiveris (Java, mejor calidad, frágil) — ya tienes Java 17.
-   - Opción 2: cv2 + parseo de MusicXML a mano (más control, más trabajo).
-   - Opción 3: servicio externo (rompe la regla de "sin APIs pagadas / local").
+B. OMR (fase 2) — partitura → MIDI  [HECHO]
+   - Audiveris 5.11 instalado y auto-detectado; endpoint `/api/transcribe-sheet` operativo.
 
 C. Multi-instrumento (fase 3)
    - Demucs + basic-pitch por stem → MIDI multi-pista.
 
-D. Publicación
-   - [ ] Crear repo en GitHub (nombre Midiforja), push (sin creds/IP).
+D. Publicación  [EN CURSO]
+   - [x] Repo local listo (creds/IP escaneados, .venv/node_modules ignorados).
+   - [ ] Crear repo en GitHub (zabat-code/Midiforja) y pushear.
    - [ ] HARD-RELOAD note para quien pruebe el frontend.
 
 ---
