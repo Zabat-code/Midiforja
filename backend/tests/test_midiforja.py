@@ -193,3 +193,72 @@ def test_send_to_midimate(client, tmp_path, monkeypatch):
     r2 = c.post("/api/send-to-midimate",
                 files={"file": ("bad.mid", b"not a midi", "audio/midi")})
     assert r2.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# 5) OMR (Fase B) — MusicXML/.mxl handling
+# ---------------------------------------------------------------------------
+def test_read_musicxml_skips_meta_inf_manifest():
+    """_read_musicxml must extract the score, not META-INF/container.xml.
+
+    Reproduces the real-world .mxl shape Audiveris emits: a META-INF/container.xml
+    manifest as the first entry plus the actual score-partwise document. A previous
+    bug compared a lowercased name against the literal 'META-INF' (uppercase) so the
+    manifest was selected and parsing failed.
+    """
+    import zipfile
+    score = "<score-partwise><measure><note/></measure></score-partwise>"
+    with tempfile.TemporaryDirectory() as d:
+        mxl = os.path.join(d, "score.mxl")
+        with zipfile.ZipFile(mxl, "w") as z:
+            z.writestr("META-INF/container.xml",
+                       "<container><rootfile full-path='score.xml'/></container>")
+            z.writestr("score.xml", score)
+        text = server_mod._read_musicxml(mxl)
+    assert "score-partwise" in text
+    assert "container" not in text.split("<score-partwise>")[0]
+
+
+def test_read_musicxml_plain_xml():
+    """A plain (uncompressed) .xml is read as-is."""
+    with tempfile.TemporaryDirectory() as d:
+        xml = os.path.join(d, "score.xml")
+        with open(xml, "w", encoding="utf-8") as f:
+            f.write("<score-partwise><note/></score-partwise>")
+        text = server_mod._read_musicxml(xml)
+    assert "score-partwise" in text
+
+
+def test_transcribe_sheet_endpoint(client, tmp_path, monkeypatch):
+    """/api/transcribe-sheet returns a valid .mid for an accepted image type.
+
+    Audiveris OCR is mocked so the test is deterministic and fast (no Java/TF).
+    """
+    mid_bytes = midiwriter.write_midi([(0.0, 0.5, 60, 100)], ticks_per_beat=480, bpm=120)
+    monkeypatch.setattr(
+        server_mod, "_transcribe_sheet",
+        lambda path: (mid_bytes, 1),
+    )
+    png = tmp_path / "sheet.png"
+    png.write_bytes(b"\x89PNG\r\n\x1a\n")  # minimal non-empty upload
+    with open(png, "rb") as f:
+        r = client.post(
+            "/api/transcribe-sheet",
+            files={"file": ("sheet.png", f, "image/png")},
+        )
+    assert r.status_code == 200
+    assert r.content[:4] == b"MThd"
+    assert r.headers.get("Content-Disposition", "").startswith("attachment")
+    assert int(r.headers.get("X-Note-Count", "0")) == 1
+
+
+def test_transcribe_sheet_rejects_unsupported_type(client, tmp_path):
+    """Non-sheet file types are rejected with 400."""
+    bad = tmp_path / "doc.txt"
+    bad.write_text("not a score")
+    with open(bad, "rb") as f:
+        r = client.post(
+            "/api/transcribe-sheet",
+            files={"file": ("doc.txt", f, "text/plain")},
+        )
+    assert r.status_code == 400
