@@ -18,6 +18,7 @@ import tempfile
 import uuid
 import subprocess
 import glob
+import signal
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -77,9 +78,11 @@ def _find_audiveris():
 def _transcribe_sheet(image_path: str):
     """Run Audiveris on an image/PDF, convert the MusicXML output to MIDI.
 
-    Returns (midi_bytes, note_count). Raises RuntimeError if Audiveris missing.
+    Returns (midi_bytes, note_count). Raises RuntimeError if Audiveris is missing,
+    crashes, or exceeds OMR_TIMEOUT (so a hung OMR never blocks the request forever).
     """
     from musicxml2midi import musicxml_to_midi  # local module
+    OMR_TIMEOUT = float(os.environ.get("MIDIFORJA_OMR_TIMEOUT", "180"))
     bin_path = _find_audiveris()
     if not bin_path:
         raise RuntimeError(
@@ -91,9 +94,27 @@ def _transcribe_sheet(image_path: str):
     # MusicXML. Both are required; -export alone fails with "transcription did not
     # complete successfully" because the score was never transcribed.
     cmd = [bin_path, "-batch", "-transcribe", "-export", "-output", work, image_path]
-    res = subprocess.run(cmd, capture_output=True, text=True, cwd=work, timeout=600)
+    try:
+        # start_new_session lets us kill the whole process GROUP (Audiveris spawns
+        # JVM child processes) if it hangs past the timeout.
+        res = subprocess.run(
+            cmd, capture_output=True, text=True, cwd=work,
+            timeout=OMR_TIMEOUT, start_new_session=True,
+        )
+    except subprocess.TimeoutExpired as e:
+        # Kill the entire process group so no orphaned Audiveris/JVM is left behind.
+        try:
+            if e.pid is not None:
+                os.killpg(os.getpgid(e.pid), signal.SIGKILL)
+        except Exception:
+            pass
+        raise RuntimeError(
+            f"Audiveris tardó más de {int(OMR_TIMEOUT)}s procesando la partitura y se "
+            "canceló. Prueba con una imagen más nítida, en horizontal, de una sola "
+            "página, o en PDF."
+        )
     if res.returncode != 0:
-        raise RuntimeError("Audiveris fallo:\n" + (res.stderr or res.stdout)[-800:])
+        raise RuntimeError("Audiveris fallo:\\n" + (res.stderr or res.stdout)[-800:])
     # find a MusicXML produced by Audiveris ( *.mxl or *.xml )
     mxl = None
     for pat in ("*.mxl", "*.xml", "*.musicxml"):
