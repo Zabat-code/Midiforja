@@ -6,9 +6,9 @@
 ## Stack
 
 - **Backend** (Python 3.11): FastAPI + Spotify **Basic Pitch** (Apache-2.0) para la
-  transcripción, `ffmpeg` para extraer audio de video, y un writer de Standard MIDI File
-  propio (`backend/midiwriter.py`) que coloca las notas en ticks reales (segundos) para que
-  suenen a la velocidad correcta.
+  transcripción, `ffmpeg` para extraer audio de video (admite **Opus**), y un writer de
+  Standard MIDI File propio (`backend/midiwriter.py`) que coloca las notas en ticks reales
+  (segundos) para que suenen a la velocidad correcta.
 - **Frontend** (Vite + vanilla JS): subida de archivo (drag & drop), barra de progreso,
   descarga del `.mid`, e i18n **ES/EN** con switch.
 

@@ -50,7 +50,7 @@ let busy = false;
 let lastMidiBlob = null;     // for "Open in MidiMate"
 
 const ALLOWED_AUDIO = [
-  "mp3", "wav", "ogg", "flac", "m4a", "aac",
+  "mp3", "wav", "ogg", "opus", "flac", "m4a", "aac",
   "mp4", "webm", "mov", "avi", "mkv", "wma",
 ];
 const ALLOWED_SHEET = ["png", "jpg", "jpeg", "pdf", "tiff", "bmp", "gif"];

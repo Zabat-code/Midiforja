@@ -31,7 +31,7 @@ import vocal_separation
 FFMPEG = shutil.which("ffmpeg") or r"C:\Users\Winuser\AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe"
 
 MAX_UPLOAD_BYTES = 200 * 1024 * 1024  # 200 MB cap
-ALLOWED_EXT = {".mp3", ".wav", ".ogg", ".flac", ".m4a", ".aac",
+ALLOWED_EXT = {".mp3", ".wav", ".ogg", ".opus", ".flac", ".m4a", ".aac",
                ".mp4", ".webm", ".mov", ".avi", ".mkv", ".wma"}
 
 HERE = os.path.dirname(os.path.abspath(__file__))
