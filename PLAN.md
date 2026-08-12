@@ -64,15 +64,16 @@ Hecho / verificado:
   grilla (cuantizar)" en la pestaña Audio/Video; test `backend/test_quality.py` OK.
 
 Pendiente / condicionado:
-- **Omitir la voz (Meta 1)**: `backend/vocal_separation.py` usa **Demucs** para
-  separar y descartar el stem de vocals ANTES de Basic Pitch. Requiere instalar
-  `demucs` + PyTorch (~2 GB); si no está instalado, la app avisa y transcribe el
-  mix original (fallback). Falta instalar Demucs y probar E2E con voz real.
+- **Omitir la voz (Meta 1)**: ✅ OPERATIVO. `backend/vocal_separation.py` usa **Demucs**
+  (PyTorch CPU instalado y verificado: produce el stem `no_vocals` correctamente) para
+  separar y descartar el stem de vocals ANTES de Basic Pitch. La primera ejecución descarga
+  el modelo `htdemucs` (~80 MB) y en CPU tarda (unos 70 s en un corte corto).
 - **Integrar Audiveris (Meta 2)**: `server.py` YA prefiere el binario vendoreado
   (`audiveris-master/app/build/install/...`) si existe; `scripts/build_audiveris.bat`
   prepara el build. **BLOQUEADO**: la rama `master` de Audiveris exige **Java 25**
   (`theMinJavaVersion = 25`) y este equipo tiene JDK 17, y no hay Gradle ni wrapper.
   Por ahora se usa el Audiveris 5.11 instalado (auto-detect) como fallback.
+
 
 
 ---

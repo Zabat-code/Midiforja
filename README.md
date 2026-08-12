@@ -18,8 +18,8 @@
 - **Calidad de ritmo**: tras crear el MIDI se compara el tiempo/ritmo contra el audio
   (f-measure `mir_eval` + desviación mediana) y se muestra en la UI.
 - **Cuantizar a la grilla**: opción para ajustar las notas al beat detectado.
-- **Eliminar la voz**: opción experimental (vía **Demucs**) para omitir la voz si alguien
-  canta; si Demucs no está instalado, avisa y transcribe el mix completo.
+- **Eliminar la voz**: opción (vía **Demucs**) para omitir la voz si alguien canta. La
+  primera ejecución descarga el modelo `htdemucs` (~80 MB) y en CPU tarda un poco.
 
 ## Requisitos
 

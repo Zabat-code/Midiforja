@@ -6,8 +6,11 @@ numpy==1.26.4
 librosa==0.11.0
 mir-eval==0.8.2
 pretty_midi==0.2.11.post0
-# Optional (Meta 3: "Eliminar la voz"). Demucs arrastra PyTorch (~2 GB):
-# pip install "demucs==4.0.1"
+# "Eliminar la voz" (Meta 1) - Demucs + PyTorch CPU. Ojo: instala desde el
+# índice CPU de PyTorch para evitar conflictos/el backend default de torchaudio:
+#   pip install torch==2.3.1 torchaudio==2.3.1 --index-url https://download.pytorch.org/whl/cpu
+#   pip install demucs==4.0.1
+demucs==4.0.1
 # dev / tests
 pytest==9.1.1
 httpx==0.28.1

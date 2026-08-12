@@ -42,17 +42,21 @@ def main():
     assert "f_measure" in sim
 
     print("== [3] Vocal removal (missing-demucs fallback) ==")
-    missing = False
+    # Force the "not available" branch so the fallback path is exercised
+    # deterministically without actually running Demucs (slow).
+    orig = vocal_separation._torch_and_demucs_available
+    vocal_separation._torch_and_demucs_available = lambda: False
     try:
-        vocal_separation.remove_vocals(SAMPLE, os.path.join(HERE, "_nomatter.wav"))
-    except RuntimeError as e:
-        missing = "Demucs/PyTorch" in str(e)
-        print(f"  raise as expected when Demucs absent: {missing}")
-    assert missing or _has_demucs(), "should raise (or have demucs installed)"
-    if missing:
-        print("\nRESULTADO quality: OK")
-    else:
-        print("\nRESULTADO quality: Demucs presente; no se probó el fallback.")
+        try:
+            vocal_separation.remove_vocals(SAMPLE, os.path.join(HERE, "_nomatter.wav"))
+            ok = False  # should have raised
+        except RuntimeError as e:
+            ok = "Demucs/PyTorch" in str(e)
+    finally:
+        vocal_separation._torch_and_demucs_available = orig
+    print(f"  fallback raise OK: {ok}")
+    assert ok
+    print("\nRESULTADO quality: OK")
 
 
 def _has_demucs():
