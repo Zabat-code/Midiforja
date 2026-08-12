@@ -27,3 +27,11 @@ Thumbs.db
 # venv anywhere
 **/.venv/
 .venv/
+
+# Audiveris vendored build artifacts (source is vendored, build/zip are not)
+audiveris-master/audiveris-master.zip
+audiveris-master/.git/
+audiveris-master/.gradle/
+audiveris-master/app/build/
+audiveris-master/app/.gradle/
+

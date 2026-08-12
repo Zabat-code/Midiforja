@@ -75,6 +75,29 @@ h1 { font-size: 22px; margin: 0; letter-spacing: .3px; }
 .drop-max { color: var(--muted); margin: 8px 0 0; font-size: 12px; opacity: .8; }
 
 .actions { margin-top: 18px; display: flex; justify-content: center; }
+.options {
+  margin-top: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  justify-content: center;
+}
+.option {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 7px 14px;
+  transition: border-color .15s, color .15s;
+}
+.option:hover { border-color: var(--accent); color: var(--fg); }
+.option input { accent-color: var(--accent); cursor: pointer; }
+
 .btn {
   border: none;
   border-radius: 10px;

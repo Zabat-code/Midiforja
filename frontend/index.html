@@ -42,6 +42,17 @@
           <input id="file_input" type="file" hidden />
         </section>
 
+        <div class="options">
+          <label class="option">
+            <input type="checkbox" id="opt_vocals" />
+            <span id="opt_vocals_label">Eliminar la voz (si canta alguien)</span>
+          </label>
+          <label class="option">
+            <input type="checkbox" id="opt_quantize" />
+            <span id="opt_quantize_label">Ajustar ritmo a la grilla (cuantizar)</span>
+          </label>
+        </div>
+
         <div class="actions">
           <button id="transcribe_btn" class="btn primary" disabled>
             <span id="button_transcribe">Transcribir a MIDI</span>

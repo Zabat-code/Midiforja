@@ -3,6 +3,11 @@ uvicorn==0.34.0
 python-multipart==0.0.20
 basic-pitch==0.4.0
 numpy==1.26.4
+librosa==0.11.0
+mir-eval==0.8.2
+pretty_midi==0.2.11.post0
+# Optional (Meta 3: "Eliminar la voz"). Demucs arrastra PyTorch (~2 GB):
+# pip install "demucs==4.0.1"
 # dev / tests
 pytest==9.1.1
 httpx==0.28.1

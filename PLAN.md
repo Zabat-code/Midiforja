@@ -50,6 +50,33 @@ NO hecho / pendiente:
 
 ---
 
+## Mejoras recientes (v0.3)
+
+Hecho / verificado:
+- **Nombre del .mid = nombre del archivo fuente**: en `/api/transcribe` y
+  `/api/transcribe-sheet` el `Content-Disposition` y el header `X-Filename` usan
+  el nombre del archivo subido (sanitizado, p.ej. `mi_piano.wav -> mi_piano.mid`).
+- **Calidad/ritmo post-creación** (`backend/quality_check.py`): detecta el beat
+  grid (librosa), permite **cuantizar** el ritmo a la grilla, y devuelve una
+  métrica de fidelidad de tiempo/ritmo (`mir_eval` f-measure + desviación mediana)
+  en el header `X-Quality`. El frontend la muestra ("Calidad de ritmo: 94%").
+- **Opciones en el frontend**: checkbox "Eliminar la voz" y "Ajustar ritmo a la
+  grilla (cuantizar)" en la pestaña Audio/Video; test `backend/test_quality.py` OK.
+
+Pendiente / condicionado:
+- **Omitir la voz (Meta 1)**: `backend/vocal_separation.py` usa **Demucs** para
+  separar y descartar el stem de vocals ANTES de Basic Pitch. Requiere instalar
+  `demucs` + PyTorch (~2 GB); si no está instalado, la app avisa y transcribe el
+  mix original (fallback). Falta instalar Demucs y probar E2E con voz real.
+- **Integrar Audiveris (Meta 2)**: `server.py` YA prefiere el binario vendoreado
+  (`audiveris-master/app/build/install/...`) si existe; `scripts/build_audiveris.bat`
+  prepara el build. **BLOQUEADO**: la rama `master` de Audiveris exige **Java 25**
+  (`theMinJavaVersion = 25`) y este equipo tiene JDK 17, y no hay Gradle ni wrapper.
+  Por ahora se usa el Audiveris 5.11 instalado (auto-detect) como fallback.
+
+
+---
+
 ## Sobre "varias pistas / varios instrumentos" (tu duda original)
 
 Respuesta honesta: **Basic Pitch NO asimila pistas de varios instrumentos por separado.**

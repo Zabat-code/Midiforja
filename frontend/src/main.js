@@ -21,6 +21,10 @@ const els = {
   fileInput: document.getElementById("file_input"),
   btn: document.getElementById("transcribe_btn"),
   btnText: document.getElementById("button_transcribe"),
+  optVocals: document.getElementById("opt_vocals"),
+  optQuantize: document.getElementById("opt_quantize"),
+  optVocalsLabel: document.getElementById("opt_vocals_label"),
+  optQuantizeLabel: document.getElementById("opt_quantize_label"),
   // sheet drop
   dropSheet: document.getElementById("drop_sheet"),
   sheetTitle: document.getElementById("sheet_title"),
@@ -61,6 +65,8 @@ function applyI18n() {
   els.dropHint.textContent = t("drop_hint");
   els.dropMax.textContent = t("max_size");
   els.btnText.textContent = t("button_transcribe");
+  els.optVocalsLabel.textContent = t("opt_vocals_label");
+  els.optQuantizeLabel.textContent = t("opt_quantize_label");
   els.sheetTitle.textContent = t("sheet_title");
   els.sheetHint.textContent = t("sheet_hint");
   els.sheetBtnText.textContent = t("button_transcribe_sheet");
@@ -197,6 +203,8 @@ els.btn.addEventListener("click", async () => {
   try {
     const fd = new FormData();
     fd.append("file", selectedFile, selectedFile.name);
+    fd.append("omit_vocals", els.optVocals.checked ? "true" : "false");
+    fd.append("quantize", els.optQuantize.checked ? "true" : "false");
     const resp = await fetch(API + "/api/transcribe", { method: "POST", body: fd });
     if (!resp.ok) {
       let msg = t("err_generic");
@@ -210,10 +218,16 @@ els.btn.addEventListener("click", async () => {
     setProgress(70); setStatus("status_processing");
     const blob = await resp.blob();
     const noteCount = resp.headers.get("X-Note-Count") || "?";
+    const quality = resp.headers.get("X-Quality");
+    const warning = resp.headers.get("X-Warning");
+    const dlName = resp.headers.get("X-Filename") || "midiforja_output.mid";
     lastMidiBlob = blob;
-    downloadBlob(blob, "midiforja_output.mid");
+    downloadBlob(blob, dlName);
     setProgress(100); setStatus("status_done");
-    els.status.textContent += `  (${noteCount} ${t("note_count")})`;
+    let extra = `  (${noteCount} ${t("note_count")})`;
+    if (quality) extra += ` · ${t("quality_label")}${quality}`;
+    if (warning) extra += `  ${t("warn_vocals")}`;
+    els.status.textContent += extra;
     els.resultActions.hidden = false;
   } catch (err) {
     setStatus("status_error", t("err_generic") + " " + (err.message || ""));
@@ -247,8 +261,9 @@ els.sheetBtn.addEventListener("click", async () => {
     setProgress(70); setStatus("status_processing");
     const blob = await resp.blob();
     const noteCount = resp.headers.get("X-Note-Count") || "?";
+    const dlName = resp.headers.get("X-Filename") || "midiforja_sheet.mid";
     lastMidiBlob = blob;
-    downloadBlob(blob, "midiforja_sheet.mid");
+    downloadBlob(blob, dlName);
     setProgress(100); setStatus("status_done");
     els.status.textContent += `  (${noteCount} ${t("note_count")})`;
     els.resultActions.hidden = false;

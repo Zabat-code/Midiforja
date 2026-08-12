@@ -12,6 +12,15 @@
 - **Frontend** (Vite + vanilla JS): subida de archivo (drag & drop), barra de progreso,
   descarga del `.mid`, e i18n **ES/EN** con switch.
 
+## Funciones destacadas
+
+- **Nombre del MIDI = nombre del archivo fuente** (p.ej. `mi_piano.wav → mi_piano.mid`).
+- **Calidad de ritmo**: tras crear el MIDI se compara el tiempo/ritmo contra el audio
+  (f-measure `mir_eval` + desviación mediana) y se muestra en la UI.
+- **Cuantizar a la grilla**: opción para ajustar las notas al beat detectado.
+- **Eliminar la voz**: opción experimental (vía **Demucs**) para omitir la voz si alguien
+  canta; si Demucs no está instalado, avisa y transcribe el mix completo.
+
 ## Requisitos
 
 - Python 3.11 (se usa un venv en `backend/.venv`).
@@ -61,9 +70,13 @@ a MIDI mediante [Audiveris](https://github.com/Audiveris/audiveris) (OMR, Apache
 
 - Pestaña **"Partitura"** en el frontend: suelta un `.png/.jpg/.pdf/.tiff` y descarga el `.mid`.
 - Endpoint: `POST /api/transcribe-sheet`.
-- Audiveris debe estar instalado. Midiforja lo auto-detecta en las rutas comunes
-  (`C:\Program Files\Audiveris\Audiveris.exe`, `%LOCALAPPDATA%\Audiveris\...`). Si no se
-  detecta, define la variable `MIDIFORJA_AUDIVERIS_BIN` con la ruta al launcher.
+- Midiforja prefiere un **Audiveris vendoreado y compilado** en
+  `audiveris-master/app/build/install/...` (motor self-contained, ver
+  `scripts/build_audiveris.bat`). Si aún no lo compilaste, auto-detecta el Audiveris
+  instalado en las rutas comunes (`C:\Program Files\Audiveris\Audiveris.exe`,
+  `%LOCALAPPDATA%\Audiveris\...`), o define `MIDIFORJA_AUDIVERIS_BIN`.
+  > Nota: la rama `master` de Audiveris exige **Java 25**; con JDK 17 no compila. Se usa
+  > el Audiveris 5.11 instalado como fallback hasta disponer de JDK 25 + Gradle.
 - El MusicXML (`.mxl`, que es un ZIP) lo convierte `backend/musicxml2midi.py` a Standard
   MIDI File.
 

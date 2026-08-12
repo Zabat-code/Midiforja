@@ -20,11 +20,13 @@ import subprocess
 import glob
 import signal
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, JSONResponse
 
 import midiwriter
+import quality_check
+import vocal_separation
 
 FFMPEG = shutil.which("ffmpeg") or r"C:\Users\Winuser\AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe"
 
@@ -46,11 +48,27 @@ MIDIMATE_URL = os.environ.get("MIDIFORJA_MIDIMATE_URL", "http://localhost:5173")
 # automatically if this is left as the default "" (empty).
 AUDIVERIS_BIN = os.environ.get("MIDIFORJA_AUDIVERIS_BIN", "")
 
+REPO_ROOT = os.path.dirname(HERE)  # repo root = parent of backend/
+
+
 def _find_audiveris():
-    """Return path to the Audiveris launcher, or None if not installed."""
+    """Return path to the Audiveris launcher, or None if not found.
+
+    Priority:
+      1. MIDIFORJA_AUDIVERIS_BIN env var, if set and it exists.
+      2. The vendored source build (audiveris-master/app/build/install/...)
+         once you have compiled it via scripts/build_audiveris.bat.
+      3. A separately installed Audiveris (auto-detect common locations).
+    """
     if AUDIVERIS_BIN and os.path.exists(AUDIVERIS_BIN):
         return AUDIVERIS_BIN
     candidates = [
+        # Vendored build (self-contained) -- compiled by scripts/build_audiveris.bat
+        os.path.join(REPO_ROOT, "audiveris-master", "app", "build", "install",
+                     "audiveris", "bin", "audiveris.bat"),
+        os.path.join(REPO_ROOT, "audiveris-master", "app", "build", "install",
+                     "audiveris", "bin", "audiveris"),
+        # Installed Audiveris (fallback)
         os.path.join(os.environ.get("LOCALAPPDATA", ""), "Audiveris", "bin", "audiveris.bat"),
         os.path.join(os.environ.get("LOCALAPPDATA", ""), "Audiveris", "bin", "audiveris"),
         r"C:\Program Files\Audiveris\bin\audiveris.bat",
@@ -161,6 +179,10 @@ app.add_middleware(
     allow_origins=ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=[
+        "X-Note-Count", "X-Midi-Id", "X-Filename", "X-Quality",
+        "X-Tempo", "X-Warning", "X-Midi-Url",
+    ],
 )
 
 
@@ -175,6 +197,14 @@ def _run_ffmpeg(in_path: str, out_wav: str) -> None:
     if proc.returncode != 0 or not os.path.exists(out_wav):
         err = proc.stderr.strip().splitlines()[-1] if proc.stderr.strip() else "unknown ffmpeg error"
         raise RuntimeError(f"ffmpeg failed: {err}")
+
+
+def _midi_name(src_filename: str, fallback: str = "midiforja_output") -> str:
+    """Derive a safe .mid filename from the source file's name."""
+    base = os.path.splitext(os.path.basename(src_filename or ""))[0] or fallback
+    base = "".join(c for c in base if c.isalnum() or c in " _-").strip()
+    base = base[:60].rstrip(" .-")
+    return f"{(base or fallback)}.mid"
 
 
 def _transcribe(wav_path: str):
@@ -211,6 +241,7 @@ def info():
     return {
         "engine": "basic-pitch (Spotify, Apache-2.0)",
         "focus": "piano (single-instrument best quality)",
+        "features": ["omit_vocals", "quantize", "quality_report"],
         "max_upload_mb": MAX_UPLOAD_BYTES // (1024 * 1024),
         "allowed_ext": sorted(ALLOWED_EXT),
         "midimate_url": MIDIMATE_URL,
@@ -218,12 +249,18 @@ def info():
 
 
 @app.post("/api/transcribe")
-async def transcribe(file: UploadFile = File(...)):
+async def transcribe(
+    file: UploadFile = File(...),
+    omit_vocals: bool = Form(False),
+    quantize: bool = Form(False),
+):
     ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in ALLOWED_EXT:
         raise HTTPException(400, f"Tipo de archivo no soportado: {ext or '(ninguno)'}")
 
     tmp_dir = tempfile.mkdtemp(prefix="midiforja_")
+    warnings = []
+    name = _midi_name(file.filename, fallback="midiforja_output")
     try:
         raw_path = os.path.join(tmp_dir, f"input{uuid.uuid4().hex}{ext}")
         wav_path = os.path.join(tmp_dir, "audio.wav")
@@ -243,6 +280,15 @@ async def transcribe(file: UploadFile = File(...)):
         except RuntimeError as e:
             raise HTTPException(422, str(e))
 
+        # ---- Optional: remove the singing voice BEFORE transcribing ----
+        if omit_vocals:
+            try:
+                instrumental = os.path.join(tmp_dir, "instrumental.wav")
+                vocal_separation.remove_vocals(wav_path, instrumental)
+                wav_path = instrumental
+            except RuntimeError as e:
+                warnings.append(str(e))  # fall back to the original mix
+
         try:
             notes = _transcribe(wav_path)
         except Exception as e:
@@ -255,21 +301,44 @@ async def transcribe(file: UploadFile = File(...)):
                 "instrumento (piano) y menos ruido de fondo.",
             )
 
+        # ---- Optional: quantize to the detected beat grid (cleaner rhythm) ----
+        grid_tempo = None
+        if quantize:
+            try:
+                grid, grid_tempo = quality_check.detect_beat_grid(wav_path)
+                notes = quality_check.quantize_notes(notes, grid)
+            except Exception:
+                pass  # quantization is best-effort
+
         midi_bytes = midiwriter.write_midi(notes, ticks_per_beat=480, bpm=120, channel=0)
         fid = uuid.uuid4().hex
         stash = os.path.join(FILES_DIR, f"{fid}.mid")
         with open(stash, "wb") as f:
             f.write(midi_bytes)
 
-        return Response(
-            content=midi_bytes,
-            media_type="audio/midi",
-            headers={
-                "Content-Disposition": 'attachment; filename="midiforja_output.mid"',
-                "X-Note-Count": str(len(notes)),
-                "X-Midi-Id": fid,
-            },
-        )
+        # ---- Quality: compare MIDI note onsets vs the audio (time/rhythm) ----
+        quality = None
+        try:
+            audio_onsets = quality_check.detect_audio_onsets(wav_path)
+            midi_onsets = [n[0] for n in notes]
+            quality = quality_check.onset_similarity(audio_onsets, midi_onsets)
+        except Exception:
+            quality = None
+
+        headers = {
+            "Content-Disposition": f'attachment; filename="{name}"',
+            "X-Note-Count": str(len(notes)),
+            "X-Midi-Id": fid,
+            "X-Filename": name,
+        }
+        if quality:
+            headers["X-Quality"] = quality_check.summarize(quality)
+        if grid_tempo:
+            headers["X-Tempo"] = f"{grid_tempo:.1f}"
+        if warnings:
+            headers["X-Warning"] = " | ".join(warnings)
+
+        return Response(content=midi_bytes, media_type="audio/midi", headers=headers)
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
@@ -335,13 +404,15 @@ async def transcribe_sheet(file: UploadFile = File(...)):
         f.write(midi_bytes)
     shutil.rmtree(tmp, ignore_errors=True)
 
+    name = _midi_name(file.filename, fallback="midiforja_sheet")
     return Response(
         content=midi_bytes,
         media_type="audio/midi",
         headers={
-            "Content-Disposition": 'attachment; filename="midiforja_sheet.mid"',
+            "Content-Disposition": f'attachment; filename="{name}"',
             "X-Note-Count": str(note_count),
             "X-Midi-Url": f"/files/{uid}.mid",
+            "X-Filename": name,
         },
     )
 
