@@ -173,6 +173,8 @@ app = FastAPI(title="Midiforja", version="0.2.0")
 ALLOWED_ORIGINS = [
     "http://localhost:5173", "http://127.0.0.1:5173",
     "http://localhost:5174", "http://127.0.0.1:5174",
+    "http://localhost:5175", "http://127.0.0.1:5175",
+    "http://localhost:8000", "http://127.0.0.1:8000",
 ]
 app.add_middleware(
     CORSMiddleware,
@@ -416,6 +418,18 @@ async def transcribe_sheet(file: UploadFile = File(...)):
         },
     )
 
+
+
+# === MidiMate API & WebSocket Integration ===
+from midimate_router import router as midimate_router
+app.include_router(midimate_router)
+
+@app.websocket("/ws")
+async def root_websocket_endpoint(websocket):
+    """Root-level WebSocket endpoint - delegates to midimate_router."""
+    from midimate_router import websocket_endpoint
+    await websocket_endpoint(websocket)
+# === End MidiMate Integration ===
 
 if __name__ == "__main__":
     import uvicorn
