@@ -20,9 +20,13 @@ import subprocess
 import glob
 import signal
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, JSONResponse
+import time
+import logging
+
+logger = logging.getLogger("midiforja.server")
 
 import midiwriter
 
@@ -178,7 +182,31 @@ def _read_musicxml(path: str) -> str:
 os.makedirs(FILES_DIR, exist_ok=True)
 os.makedirs(INBOX_DIR, exist_ok=True)
 
-app = FastAPI(title="Midiforja", version="0.2.0")
+app = FastAPI(title="Midiforja", version="0.4.0-hardened")
+
+# --- Rate limiting (simple in-memory) ---
+_rate_limit_window = 60  # seconds
+_rate_limit_max = 30     # requests per window
+_client_hits: dict = {}
+
+def _rate_limit_check(client_ip: str) -> bool:
+    now = time.time()
+    hits = [t for t in _client_hits.get(client_ip, []) if t > now - _rate_limit_window]
+    _client_hits[client_ip] = hits
+    if len(hits) >= _rate_limit_max:
+        return False
+    hits.append(now)
+    return True
+
+# --- Security headers middleware ---
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["Content-Security-Policy"] = "default-src 'none'"
+    return response
 
 ALLOWED_ORIGINS = [
     "http://localhost:5173", "http://127.0.0.1:5173",
@@ -437,5 +465,5 @@ app.include_router(midimate_router)
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info")
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
 

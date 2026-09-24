@@ -1,0 +1,26 @@
+# PENDIENTES — Midiforja (se actualiza cada vez que se trabaja)
+Última edición: 2026-08-18. ComfyUI + backend/frontend (música/imagen) — propia de Zabat.
+
+## ESTADO (2026-08-18, fix aplicado + verificado)
+- BUG ORIGINAL (revisión): "assert bug en test". REALIDAD: el test
+  backend/tests/test_midiforja.py NI CORRÍA.
+  Causas:
+  1. `sys.path.insert(0, HERE)` apuntaba a backend/tests/, pero
+     midiwriter.py está en backend/ -> ModuleNotFoundError.
+  2. Path hardcodeado roto: MIDIMATE_MIDI = F:\ia.proyectos\MidiMate\src\midi.js
+     (falta carpeta Midimate/). Real: ...\MidiMate\Midimate\src\midi.js.
+- FIX APLICADO:
+  * sys.path apunta ahora al padre (backend/).
+  * MIDIMATE_MIDI corregido a la ruta real.
+- VERIFICACIÓN: `pytest backend/tests/test_midiforja.py` -> 12 passed, 0 failed
+  (solo warnings de deprecación de librerías, no errores). 105s.
+- El assert de '"notes":6' (línea 95) SÍ pasa ahora que el test corre.
+
+## NOTAS
+- backend/ tiene server.py, musicxml2midi.py, quality_check.py, vocal_separation.py,
+  midiwriter.py. frontend/ aparte. audiveris-master/ para OMR.
+- test_e2e.py / test_musicxml.py / test_quality.py / test_writer.py NO se tocaron
+  (estaban fuera del alcance del bug reportado).
+
+## LOG DE CAMBIOS
+- 2026-08-18: fix test_midiforja.py (sys.path + ruta MidiMate). 12 passed. Creado.
