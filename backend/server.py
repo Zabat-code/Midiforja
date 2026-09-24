@@ -25,8 +25,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, JSONResponse
 
 import midiwriter
-import quality_check
-import vocal_separation
+
+# Optional dependencies (may not be installed)
+quality_check = None
+vocal_separation = None
+try:
+    import quality_check
+except ImportError:
+    pass
+try:
+    import vocal_separation
+except ImportError:
+    pass
 
 FFMPEG = shutil.which("ffmpeg") or r"C:\Users\Winuser\AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe"
 
@@ -420,16 +430,10 @@ async def transcribe_sheet(file: UploadFile = File(...)):
 
 
 
-# === MidiMate API & WebSocket Integration ===
+# === MidiMate API Integration ===
 from midimate_router import router as midimate_router
 app.include_router(midimate_router)
-
-@app.websocket("/ws")
-async def root_websocket_endpoint(websocket):
-    """Root-level WebSocket endpoint - delegates to midimate_router."""
-    from midimate_router import websocket_endpoint
-    await websocket_endpoint(websocket)
-# === End MidiMate Integration ===
+# === End MidiMate API ===
 
 if __name__ == "__main__":
     import uvicorn
