@@ -28,6 +28,7 @@
       <nav class="tabs">
         <button class="tab active" id="tab_audio" data-tab="audio">🎵 <span id="tab_audio_label">Audio / Video</span></button>
         <button class="tab" id="tab_sheet" data-tab="sheet">🎼 <span id="tab_sheet_label">Partitura</span></button>
+        <button class="tab" id="tab_midi" data-tab="midi">🔬 <span id="tab_midi_label">Analizar MIDI</span></button>
       </nav>
 
       <!-- AUDIO / VIDEO -->
@@ -81,6 +82,27 @@
         </p>
       </section>
 
+      <!-- ANALIZAR MIDI -->
+      <section id="panel_midi" class="panel" hidden>
+        <section id="drop_midi" class="drop" tabindex="0" role="button" aria-label="MIDI upload">
+          <div class="drop-inner">
+            <div class="drop-icon">🔬</div>
+            <p id="midi_title" class="drop-title">Suelta aquí un archivo .mid</p>
+            <p id="midi_hint" class="drop-hint">o haz clic para elegir · .mid / .midi</p>
+          </div>
+          <input id="midi_input" type="file" accept=".mid,.midi" hidden />
+        </section>
+
+        <div class="actions">
+          <button id="analyze_btn" class="btn primary" disabled>
+            <span id="button_analyze">Analizar y guardar</span>
+          </button>
+        </div>
+        <p class="setting-hint" id="midi_note">
+          Extrae notas, acordes, tonalidad, ritmo y dificultad. Guarda el pack en la base de datos local.
+        </p>
+      </section>
+
       <div class="progress" id="progress" hidden>
         <div class="bar"><div class="bar-fill" id="bar_fill"></div></div>
         <p class="status" id="status_text">Listo.</p>
@@ -94,6 +116,46 @@
           <span id="button_again">Transcribir otro</span>
         </button>
       </div>
+
+      <!-- RESUMEN DEL ANÁLISIS -->
+      <section id="analysis_result" class="analysis-card" hidden>
+        <div class="analysis-head">
+          <h2 id="analysis_heading">Resumen del análisis</h2>
+          <span id="analysis_badge" class="badge"></span>
+        </div>
+        <div id="analysis_summary" class="analysis-grid"></div>
+        <div class="analysis-chords" id="analysis_chords"></div>
+        <div class="actions analysis-actions">
+          <button id="download_pack_btn" class="btn">
+            <span id="button_download_pack">Descargar pack de estudio</span>
+          </button>
+          <button id="download_midi_btn" class="btn">
+            <span id="button_download_midi">Descargar MIDI analizado</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- BIBLIOTECA LOCAL -->
+      <section class="library">
+        <div class="library-head">
+          <h2 id="library_title">Biblioteca de estudio</h2>
+          <button id="refresh_library_btn" class="btn small">↻</button>
+        </div>
+        <p id="library_stats" class="library-stats"></p>
+        <div class="library-filters">
+          <input id="library_search" type="search" placeholder="Buscar…" aria-label="Buscar" />
+          <select id="library_kind" aria-label="Tipo">
+            <option value="">Todos los tipos</option>
+            <option value="audio">Audio</option>
+            <option value="sheet">Partitura</option>
+            <option value="midi">MIDI</option>
+          </select>
+          <select id="library_key" aria-label="Tonalidad">
+            <option value="">Todas las tonalidades</option>
+          </select>
+        </div>
+        <div id="library_list" class="library-list"></div>
+      </section>
 
       <details class="settings">
         <summary id="settings_summary">Ajustes</summary>

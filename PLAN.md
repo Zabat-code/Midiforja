@@ -1,6 +1,27 @@
 # Midiforja — Plan (actualizado al día)
 
-App para convertir audio/video en MIDI, y (fase futura) partituras en imagen/PDF.
+> **Estado 2026-11-23 (v0.5-study):** Midiforja funciona como herramienta
+> independiente: audio/video, partitura o `.mid` → análisis musical → pack de
+> estudio JSON guardado en SQLite. MidiMate **no se modifica**: sigue consumiendo
+> el `.mid` de siempre por drag & drop. Verificado con `36 passed` (pytest) y
+> `node --check` en el frontend. Sin errores detectados en las pruebas.
+>
+> **Novedades de esta iteración:**
+> - `midi_reader.py`: lector SMF propio (sin `pretty_midi`/`mido`).
+> - `music_analysis.py`: BPM, tonalidad, acordes, ritmo, densidad y dificultad.
+> - `study_db.py`: SQLite local con historial, filtros, descarga y borrado.
+> - `ws_server.py`: secuencias por conexión, `event_id`, dedup y heartbeat;
+>   acepta `event/data` y `type/payload`, emite ambos alias.
+> - `server.py`: `asyncio.to_thread`, rate limit, `/files/{id}`, CORS para
+>   `8765`/`null`, endpoints `/api/analyze-midi`, `/api/analyses`, `/api/stats`
+>   y descarga del pack.
+> - Frontend: pestaña “Analizar MIDI”, resumen visual y biblioteca con
+>   búsqueda/filtros/estadísticas (ES/EN).
+>
+> **Pendiente de publicación:** commit en `feature/api-ws-integration` y push
+> (los commits `e98ae10` y `f0eb75a` todavía no están en el remoto).
+
+App para convertir audio/video en MIDI, y partituras en imagen/PDF.
 Nombre libre en GitHub ("Midiforja"/"MidiForja" = 404, sin colisión). Licencia MIT.
 Motor de transcripción: Spotify Basic Pitch (Apache-2.0).
 
@@ -112,8 +133,20 @@ C. Multi-instrumento (fase 3)
 
 D. Publicación  [EN CURSO]
    - [x] Repo local listo (creds/IP escaneados, .venv/node_modules ignorados).
-   - [ ] Crear repo en GitHub (zabat-code/Midiforja) y pushear.
+   - [x] Repo creado en GitHub (Zabat-code/Midiforja); rama de trabajo
+     `feature/api-ws-integration`.
+   - [ ] Hacer commit de v0.5-study y pushear (faltan `e98ae10`, `f0eb75a` y el
+     commit nuevo).
+   - [ ] Limpiar el token del remote y avisar al usuario para revocarlo.
    - [ ] HARD-RELOAD note para quien pruebe el frontend.
+
+E. Análisis y pack de estudio (v0.5)  [HECHO]
+   - [x] Lector SMF propio y análisis desde bytes `.mid` (audio, OMR y MIDI).
+   - [x] Pack de estudio JSON + base SQLite con búsqueda y descarga.
+   - [x] UI: pestaña de análisis, resumen y biblioteca (ES/EN).
+   - [x] Suite ampliada: 36 tests, 0 errores detectados.
+   - [ ] E2E real de transcripción con Basic Pitch instalado en el venv (el
+     Python del sistema no tiene `basic_pitch`; no se pudo ejecutar aquí).
 
 ---
 

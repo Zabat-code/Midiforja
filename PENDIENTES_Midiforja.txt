@@ -1,7 +1,26 @@
 # PENDIENTES — Midiforja (se actualiza cada vez que se trabaja)
-Última edición: 2026-08-18. ComfyUI + backend/frontend (música/imagen) — propia de Zabat.
+Última edición: 2026-11-23. Análisis musical + pack de estudio + SQLite — propia de Zabat.
 
-## ESTADO (2026-08-18, fix aplicado + verificado)
+## ESTADO (2026-11-23, v0.5-study)
+- Midiforja es una herramienta independiente: audio/video, partitura o .mid ->
+  analisis -> pack de estudio JSON guardado en SQLite. MidiMate NO se modifica;
+  conserva su API, camara y el .mid de siempre.
+- Anadidos: backend/midi_reader.py, backend/music_analysis.py,
+  backend/study_db.py; ws_server.py y midimate_router.py reescritos (ambos
+  formatos de cable, secuencias por conexion, event_id, dedup, heartbeat);
+  server.py con asyncio.to_thread, rate limit, /files/{id}, CORS 8765/null y
+  endpoints /api/analyze-midi, /api/analyses, /api/study-pack, /api/stats.
+- Frontend: pestaña "Analizar MIDI", resumen, descargas y biblioteca con
+  busqueda/filtros/estadisticas, i18n ES/EN.
+- Verificacion: `python3 -m pytest -q` -> 36 passed; `node --check` OK en
+  src/main.js y src/i18n.js. Sin errores detectados en las pruebas.
+- Config: backend/.env.example actualizado (DB, rate limit, CORS, WS, rutas
+  no-Windows); requirements.txt con pytest-asyncio y python-dotenv.
+- PENDIENTE: commit + push a feature/api-ws-integration; limpiar token del
+  remote y ofrecer revocacion; E2E real de Basic Pitch (no instalado en el
+  Python del sistema).
+
+## HISTORIAL (2026-08-18, fix aplicado + verificado)
 - BUG ORIGINAL (revisión): "assert bug en test". REALIDAD: el test
   backend/tests/test_midiforja.py NI CORRÍA.
   Causas:
@@ -23,4 +42,6 @@
   (estaban fuera del alcance del bug reportado).
 
 ## LOG DE CAMBIOS
+- 2026-11-23: v0.5-study (analisis musical, pack JSON, SQLite, UI de biblioteca,
+  hub WS endurecido). 36 passed. .env.example, requirements, PLAN y README al dia.
 - 2026-08-18: fix test_midiforja.py (sys.path + ruta MidiMate). 12 passed. Creado.

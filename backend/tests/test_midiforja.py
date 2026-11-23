@@ -12,6 +12,7 @@ The heavy, real transcription (Basic Pitch) stays in test_e2e.py (manual).
 
 import os
 import sys
+import json
 import wave
 import shutil
 import tempfile
@@ -20,11 +21,22 @@ import numpy as np
 import pytest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
+BACKEND = os.path.dirname(HERE)
+for path in (BACKEND, HERE):
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
 import midiwriter
+import midi_reader
 
-MIDIMATE_MIDI = r"F:\ia.proyectos\MidiMate\src\midi.js"
+# Si el parser real de MidiMate está disponible se usa; si no, el lector SMF
+# propio de Midiforja valida el mismo contrato (notas + ticks + tempo).
+_MIDIMATE_CANDIDATES = [
+    os.environ.get("MIDIMATE_MIDI", ""),
+    os.path.join(BACKEND, "..", "MidiMate", "Midimate", "src", "midi.js"),
+    os.path.join(BACKEND, "..", "MidiMate", "src", "midi.js"),
+]
+MIDIMATE_MIDI = next((p for p in _MIDIMATE_CANDIDATES if p and os.path.exists(p)), None)
 
 
 # ---------------------------------------------------------------------------
@@ -56,9 +68,16 @@ def make_wav(path, notes=("C4", "E4", "G4"), sr=44100, note_dur=0.3, gap=0.05):
 
 
 def parse_with_midimate(mid_bytes):
-    """Use MidiMate's real src/midi.js (via node) to validate the .mid."""
-    if not os.path.exists(MIDIMATE_MIDI):
-        return None
+    """Valida el .mid con el parser real de MidiMate si está, o con midi_reader."""
+    if not MIDIMATE_MIDI:
+        notes, bpm = midi_reader.read_midi(mid_bytes)
+        parsed = midi_reader.parse_midi(mid_bytes)
+        return json.dumps({
+            "ticks": parsed["ticks_per_beat"],
+            "tracks": parsed["format"],
+            "notes": len(notes),
+            "bpm": bpm,
+        })
     tmp = tempfile.mkdtemp(prefix="mmcheck_")
     parser = os.path.join(tmp, "_parser.mjs")
     shutil.copyfile(MIDIMATE_MIDI, parser)
@@ -92,7 +111,9 @@ def test_writer_header_and_midimate_parse():
     assert mid[:4] == b"MThd", "bad MIDI header"
     res = parse_with_midimate(mid)
     assert res is not None, "MidiMate parser not available"
-    assert '"notes":6' in res, f"MidiMate parse failed: {res}"
+    assert not res.startswith("ERR:"), f"MidiMate parse failed: {res}"
+    parsed = json.loads(res)
+    assert parsed["notes"] == 6, f"MidiMate parse failed: {res}"
 
 
 def test_writer_rejects_out_of_range_pitch():
@@ -177,21 +198,18 @@ def test_transcribe_no_notes(client, tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 def test_send_to_midimate(client, tmp_path, monkeypatch):
     # Point MidiMate dir at a temp folder so we don't touch the real project.
-    monkeypatch.setenv("MIDIFORJA_MIDIMATE_DIR", str(tmp_path))
-    import importlib
-    importlib.reload(server_mod)
-    c = TestClient(server_mod.app)
+    monkeypatch.setattr(server_mod, "MIDIMATE_DIR", str(tmp_path))
 
     mid_bytes = midiwriter.write_midi([(0.0, 0.5, 60, 100)], ticks_per_beat=480, bpm=120)
-    r = c.post("/api/send-to-midimate",
-               files={"file": ("out.mid", mid_bytes, "audio/midi")})
+    r = client.post("/api/send-to-midimate",
+                    files={"file": ("out.mid", mid_bytes, "audio/midi")})
     assert r.status_code == 200
     j = r.json()
     assert j["ok"] is True
     assert os.path.exists(j["path"])
     # invalid (non-midi) upload rejected
-    r2 = c.post("/api/send-to-midimate",
-                files={"file": ("bad.mid", b"not a midi", "audio/midi")})
+    r2 = client.post("/api/send-to-midimate",
+                     files={"file": ("bad.mid", b"not a midi", "audio/midi")})
     assert r2.status_code == 400
 
 

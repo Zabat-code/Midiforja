@@ -1,17 +1,21 @@
-"""Unit test for musicxml2midi: parse a small MusicXML and verify notes + .mid validity."""
-import os, sys, subprocess, tempfile, shutil, textwrap
+"""Tests de musicxml2midi: divisions, tempo anidado y MIDI resultante."""
+import os
+import sys
+from pathlib import Path
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
+HERE = Path(__file__).resolve().parent
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
+
+import midi_reader
 import musicxml2midi
 
 SAMPLE = """<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
 <score-partwise version="4.0">
   <part-list><score-part id="P1"><part-name>Music</part-name></score-part></part-list>
   <part id="P1">
     <measure number="1">
-      <attributes><divisions>480</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <attributes><divisions>480</divisions></attributes>
       <sound tempo="120"/>
       <note><pitch><step>C</step><octave>4</octave></pitch><duration>480</duration><voice>1</voice><staff>1</staff></note>
       <note><chord/><pitch><step>E</step><octave>4</octave></pitch><duration>480</duration><voice>1</voice><staff>1</staff></note>
@@ -19,49 +23,40 @@ SAMPLE = """<?xml version="1.0" encoding="UTF-8"?>
       <note><pitch><step>D</step><octave>4</octave></pitch><duration>480</duration><voice>1</voice><staff>1</staff></note>
     </measure>
     <measure number="2">
-      <note><pitch><step>E</step><octave>4</octave><alter>0</alter></pitch><duration>480</duration><voice>1</voice><staff>1</staff></note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>480</duration><voice>1</voice><staff>1</staff></note>
       <note><pitch><step>F</step><octave>4</octave></pitch><duration>480</duration><voice>1</voice><staff>1</staff></note>
     </measure>
   </part>
 </score-partwise>
 """
 
-def main():
+NESTED_TEMPO = """<score-partwise><part id="P1"><measure number="1">
+<attributes><divisions>1</divisions></attributes>
+<direction><direction-type><words>x</words></direction-type><sound tempo="60"/></direction>
+<note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration></note>
+</measure></part></score-partwise>"""
+
+
+def test_sample_notes_and_chord():
     notes = musicxml2midi.musicxml_to_notes(SAMPLE)
-    # Expect 7 notes; first three are a C4/E4/G4 chord starting at 0.
-    assert len(notes) == 7, f"expected 7 notes, got {len(notes)}: {notes}"
-    # chord notes share start_sec=0
-    starts = [round(n[0], 3) for n in notes[:3]]
-    assert starts == [0.0, 0.0, 0.0], f"chord start mismatch: {starts}"
-    pitches = sorted(n[2] for n in notes[:3])
-    assert pitches == [60, 64, 67], f"chord pitches: {pitches}"
-    # durations: 480 divisions @ 120bpm -> 1s per note
-    ends = [round(n[1], 3) for n in notes[:3]]
-    assert ends == [1.0, 1.0, 1.0], f"chord end: {ends}"
-    print("[1] notes parsed OK:", notes[:3], "...total", len(notes))
+    assert len(notes) == 6
+    assert [round(n[0], 3) for n in notes[:3]] == [0.0, 0.0, 0.0]
+    assert sorted(n[2] for n in notes[:3]) == [60, 64, 67]
+    # 480 ticks con divisions=480 = 1 quarter note @120bpm = 0.5 s
+    assert [round(n[1], 3) for n in notes[:3]] == [0.5, 0.5, 0.5]
 
-    mid = musicxml2midi.musicxml_to_midi(SAMPLE)
+
+def test_nested_sound_tempo_and_divisions():
+    assert musicxml2midi.musicxml_tempo(NESTED_TEMPO) == 60.0
+    notes = musicxml2midi.musicxml_to_notes(NESTED_TEMPO)
+    assert len(notes) == 1
+    # divisions=1, tempo=60 -> 1 segundo exacto
+    assert notes[0][0] == 0.0
+    assert round(notes[0][1], 3) == 1.0
+
+
+def test_midi_uses_detected_tempo():
+    mid = musicxml2midi.musicxml_to_midi(NESTED_TEMPO)
     assert mid[:4] == b"MThd"
-    # cross-check with MidiMate parser
-    MIDIMATE = r"F:\ia.proyectos\MidiMate\src\midi.js"
-    if os.path.exists(MIDIMATE):
-        tmp = tempfile.mkdtemp(prefix="mx_")
-        shutil.copyfile(MIDIMATE, os.path.join(tmp, "_p.mjs"))
-        mp = os.path.join(tmp, "_c.mid"); open(mp, "wb").write(mid)
-        runner = textwrap.dedent(f"""
-            import {{ parseMidi, midiToNotes }} from "./_p.mjs";
-            import fs from "fs";
-            const raw = fs.readFileSync({mp!r});
-            const buf = new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength);
-            const p = parseMidi(buf); const n = midiToNotes(p);
-            console.log(JSON.stringify({{ ticks: p.ticksPerBeat, tracks: p.tracks.length, notes: n.length }}));
-        """)
-        rp = os.path.join(tmp, "_r.mjs"); open(rp, "w").write(runner)
-        out = subprocess.run(["node", "_r.mjs"], capture_output=True, text=True, cwd=tmp, timeout=60)
-        shutil.rmtree(tmp, ignore_errors=True)
-        print("[2] MidiMate parse:", out.stdout.strip() or out.stderr[:200])
-        assert '"notes":7' in out.stdout, "MidiMate did not read 7 notes"
-    print("\nRESULTADO: musicxml2midi OK")
-
-if __name__ == "__main__":
-    main()
+    parsed = midi_reader.parse_midi(mid)
+    assert parsed["tempo_changes"][0][1] == 1_000_000  # 60 BPM

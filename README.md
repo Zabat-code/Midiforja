@@ -1,125 +1,154 @@
 # Midiforja
 
-> Convierte audio o video en MIDI. Enfocado primero en piano (un instrumento a la vez).
-> El `.mid` resultante es compatible con [MidiMate](https://github.com/Zabat-code) y cualquier DAW.
+> Audio, video, partituras o `.mid` → análisis musical → **pack de estudio** en JSON
+> y una base de datos local SQLite. El `.mid` resultante sirve como puente manual a
+> [MidiMate](https://github.com/Zabat-code) y a cualquier DAW.
 
 ## Stack
 
-- **Backend** (Python 3.11): FastAPI + Spotify **Basic Pitch** (Apache-2.0) para la
-  transcripción, `ffmpeg` para extraer audio de video (admite **Opus**), y un writer de
-  Standard MIDI File propio (`backend/midiwriter.py`) que coloca las notas en ticks reales
-  (segundos) para que suenen a la velocidad correcta.
-- **Frontend** (Vite + vanilla JS): subida de archivo (drag & drop), barra de progreso,
-  descarga del `.mid`, e i18n **ES/EN** con switch.
+- **Backend** (Python 3.11+): FastAPI, Spotify **Basic Pitch** (Apache-2.0) para
+  transcripción de audio, `ffmpeg` para vídeo/Opus, y un escritor/lector de Standard
+  MIDI File propios (`midiwriter.py`, `midi_reader.py`) sin dependencias pesadas.
+- **Análisis** (`music_analysis.py`): notas normalizadas, acordes, tonalidad, ritmo,
+  densidad y dificultad. No necesita `pretty_midi`/`mido`.
+- **Base de datos** (`study_db.py`): SQLite local con historial, búsqueda por
+  archivo/tonalidad/acorde, filtros por tipo y dificultad, y exportación del pack.
+- **Frontend** (Vite + vanilla JS): tres pestañas — Audio/Video, Partitura y
+  Analizar MIDI — más biblioteca de estudio, con i18n **ES/EN**.
 
 ## Funciones destacadas
 
-- **Nombre del MIDI = nombre del archivo fuente** (p.ej. `mi_piano.wav → mi_piano.mid`).
-- **Calidad de ritmo**: tras crear el MIDI se compara el tiempo/ritmo contra el audio
-  (f-measure `mir_eval` + desviación mediana) y se muestra en la UI.
-- **Cuantizar a la grilla**: opción para ajustar las notas al beat detectado.
-- **Eliminar la voz**: opción (vía **Demucs**) para omitir la voz si alguien canta. La
-  primera ejecución descarga el modelo `htdemucs` (~80 MB) y en CPU tarda un poco.
+- `mp3/opus/wav/… → .mid` con nombre derivado del archivo fuente.
+- Opciones: quitar voz (Demucs) y cuantizar al beat detectado.
+- Calidad de ritmo comparando onsets de audio vs MIDI (`mir_eval`, opcional).
+- Partitura (imagen/PDF) → MusicXML vía Audiveris → `.mid`, con tempo y
+  `divisions` corregidos.
+- **Analizar un `.mid` existente** y obtener:
+  - `notes`: tiempo, duración, pitch, velocidad y nombre de nota.
+  - `analysis.key`: tonalidad, modo, confianza y escala.
+  - `analysis.chords`: acordes con root, calidad y frecuencia.
+  - `analysis.rhythm`: BPM, densidad, sincopación e histograma de duraciones.
+  - `analysis.difficulty`: puntuación 0–100, nivel 1–4 y rango/polifonía.
+- Guardado automático del pack en SQLite al transcribir audio, partitura o analizar
+  un MIDI; descarga como `*.study-pack.json`.
+- Servidor con rate limit, heartbeat WS, secuencias por cliente y trabajo pesado
+  fuera del event loop (`asyncio.to_thread`).
 
 ## Requisitos
 
-- Python 3.11 (se usa un venv en `backend/.venv`).
-- Node 18+ y npm (para el frontend Vite).
-- `ffmpeg` en el PATH (o en `C:\Users\Winuser\AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe`).
-- Conexión a internet la **primera** vez que corre Basic Pitch (descarga el modelo de TF Hub).
+- Python 3.11+ (usa `backend/.venv` o un venv en la raíz).
+- Node 18+ y npm para Vite.
+- `ffmpeg` en el PATH (decodea Opus/OGG/MP4).
+- Opcionales: `basic-pitch` (transcripción), `mir_eval` (calidad), Demucs+torch
+  (quitar voz) y Audiveris (OMR).
 
 ## Puertos
 
-- Backend API: `http://127.0.0.1:8000`
-- Frontend dev: `http://127.0.0.1:5174` (puerto fresco, no colisiona con MidiMate)
+- Backend: `http://127.0.0.1:8000`
+- Frontend dev: `http://127.0.0.1:5174`
 
 ## Cómo correr (dev)
 
-1. Backend (el venv de Python 3.11 vive en la raíz del repo, en `.venv/`):
-   ```bat
-   cd <repo>\Midiforja
-   .venv\Scripts\activate
-   pip install -r backend\requirements.txt
-   python backend\server.py
-   ```
-   O usa `run_backend.bat` (ajusta la ruta del venv si lo reubicas).
+```bat
+cd <repo>\Midiforja
+.venv\Scripts\activate
+pip install -r backend\requirements.txt
+python backend\server.py
+```
 
-2. Frontend (en otra terminal):
-   ```bat
-   cd <repo>\Midiforja\frontend
-   npm install
-   npx vite --port 5174
-   ```
-   O usa `run_frontend.bat`.
+En otra terminal:
 
-3. Abre `http://127.0.0.1:5174/`, suelta un audio/video, pulsa "Transcribir a MIDI",
-   y descarga el `.mid`.
+```bat
+cd <repo>\Midiforja\frontend
+npm install
+npx vite --port 5174
+```
 
-## Usar el MIDI en MidiMate
+Abre `http://127.0.0.1:5174/`. También existen `run_backend.bat` y `run_frontend.bat`.
 
-El `.mid` es Standard MIDI File tipo 1, `ticksPerBeat = 480`, con un evento de tempo
-(120 BPM) en la pista 0 para que la velocidad sea correcta. MidiMate lo lee con su
-`src/midi.js` (`parseMidi` + `midiToNotes`). Descarga el archivo y cárgalo en MidiMate
-( drag & drop / file input ). Midiforja NO está acoplado a MidiMate: el `.mid` sirve
-en cualquier DAW.
+## Flujo recomendado
 
-## OMR — partitura → MIDI (Fase B, operativo)
+1. **Audio/video** → “Transcribir a MIDI”: descarga el `.mid` y guarda su análisis.
+2. **Partitura** → “Convertir partitura a MIDI” (requiere Audiveris).
+3. **Analizar MIDI** → suelta cualquier `.mid` (incluso generado fuera de Midiforja).
+4. En la **Biblioteca de estudio**, filtra, abre un análisis o descarga el pack JSON.
+5. Carga el `.mid` en MidiMate por drag & drop. Midiforja **no modifica** MidiMate.
 
-Además de audio/video, Midiforja puede transcribir una **imagen o PDF de partitura**
-a MIDI mediante [Audiveris](https://github.com/Audiveris/audiveris) (OMR, Apache-2.0).
+## API principal
 
-- Pestaña **"Partitura"** en el frontend: suelta un `.png/.jpg/.pdf/.tiff` y descarga el `.mid`.
-- Endpoint: `POST /api/transcribe-sheet`.
-- Midiforja prefiere un **Audiveris vendoreado y compilado** en
-  `audiveris-master/app/build/install/...` (motor self-contained, ver
-  `scripts/build_audiveris.bat`). Si aún no lo compilaste, auto-detecta el Audiveris
-  instalado en las rutas comunes (`C:\Program Files\Audiveris\Audiveris.exe`,
-  `%LOCALAPPDATA%\Audiveris\...`), o define `MIDIFORJA_AUDIVERIS_BIN`.
-  > Nota: la rama `master` de Audiveris exige **Java 25**; con JDK 17 no compila. Se usa
-  > el Audiveris 5.11 instalado como fallback hasta disponer de JDK 25 + Gradle.
-- El MusicXML (`.mxl`, que es un ZIP) lo convierte `backend/musicxml2midi.py` a Standard
-  MIDI File.
+| Método | Ruta | Uso |
+|---|---|---|
+| `POST` | `/api/transcribe` | audio/video → `.mid` + análisis |
+| `POST` | `/api/transcribe-sheet` | imagen/PDF → `.mid` + análisis (Audiveris) |
+| `POST` | `/api/analyze-midi` | `.mid` → pack de estudio |
+| `GET` | `/api/analyses` | listado con `search`, `key`, `kind`, `min_difficulty`, `max_difficulty` |
+| `GET` | `/api/analyses/{id}` | pack completo |
+| `GET` | `/api/study-pack/{id}` | descarga del JSON |
+| `GET` | `/api/analyses/{id}/midi` | descarga del `.mid` guardado |
+| `DELETE` | `/api/analyses/{id}` | borrar análisis |
+| `GET` | `/api/stats` | estadísticas de la base |
+| `GET` | `/files/{id}` | `.mid` stashado (acepta con/sin `.mid`) |
+| `GET` | `/api/midimate/*` | API/WS opcional para MidiMate |
 
-## Capturas
+Ejemplo:
 
-**Pestaña Audio / Video** — suelta un audio o video y descarga el `.mid`:
+```bash
+curl -F "file=@mi_piano.mp3" http://127.0.0.1:8000/api/analyze-midi
+```
 
-![Pestaña Audio/Video](docs/screenshots/tab-audio.png)
+La respuesta incluye `X-Analysis-Id`, `X-Note-Count` y `X-Midi-Url`.
 
-**Pestaña Partitura (OMR)** — suelta una imagen/PDF de partitura y descarga el `.mid`:
+## Configuración
 
-![Pestaña Partitura](docs/screenshots/tab-sheet.png)
+Copia `backend/.env.example` y ajusta:
 
-## Límites conocidos (básicos)
+- `MIDIFORJA_DB_PATH`: ruta del SQLite (por defecto `backend/data/midiforja.db`).
+- `MIDIFORJA_RATE_LIMIT_MAX`: peticiones `/api/*` por minuto por IP (default 30).
+- `MIDIFORJA_MIDIMATE_DIR` / `MIDIFORJA_MIDIMATE_URL`: sólo para el botón opcional
+  “Abrir en MidiMate”.
+- `MIDIFORJA_AUDIVERIS_BIN` / `MIDIFORJA_OMR_TIMEOUT`: OMR.
 
-- **Basic Pitch es instrument-agnostic y polifónico, pero funciona mejor con UN
-  instrumento a la vez.** Una canción completa con muchos instrumentos produce notas
-  mezcladas (no separa pistas). Para multi-instrumento haría falta source separation
-  (p.ej. Demucs) antes de transcribir — fase futura opcional.
-- Tamaño de archivo capado a 200 MB.
-- Sin GPU, la transcripción en CPU puede tardar (segundos a minutos por minuto de audio).
+## Pruebas
+
+```bash
+cd backend
+python -m pytest -q
+```
+
+La suite cubre escritor/lector MIDI, `musicxml2midi`, análisis musical, base SQLite,
+endpoints y el protocolo WS. Sin errores detectados en las pruebas. La transcripción
+real con Basic Pitch se valida aparte en `test_e2e.py` (requiere el modelo instalado).
 
 ## Estructura
 
 ```
-Midiforja/
-  backend/
-    server.py        # FastAPI: /api/transcribe (ffmpeg -> basic-pitch -> .mid)
-    midiwriter.py    # Standard MIDI File writer (ticks en segundos reales)
-    test_writer.py   # Valida el .mid contra el parser de MidiMate
-    test_e2e.py      # Piano sintético -> /api/transcribe -> .mid (E2E real)
-    requirements.txt
-    .venv/           # entorno Python 3.11 (no se commitea)
-  frontend/
-    index.html
-    src/main.js      # lógica de UI
-    src/i18n.js      # tablas ES/EN
-    src/style.css
-    vite.config.js
-  run_backend.bat
-  run_frontend.bat
+backend/
+  server.py            # FastAPI, endpoints y middleware
+  midiwriter.py        # SMF writer
+  midi_reader.py       # SMF reader (para analizar .mid)
+  musicxml2midi.py     # MusicXML -> notas/MIDI
+  music_analysis.py    # pack de estudio
+  study_db.py          # SQLite local
+  quality_check.py     # beat grid, cuantización, fidelity
+  vocal_separation.py  # Demucs opcional
+  midimate_router.py   # REST + WS opcional
+  ws_server.py         # hub WS con secuencias por cliente
+  test_*.py            # suite pytest
+frontend/
+  index.html
+  src/main.js
+  src/i18n.js
+  src/style.css
 ```
+
+## Límites conocidos
+
+- Basic Pitch funciona mejor con **un instrumento a la vez**; una canción completa
+  mezcla notas de varios instrumentos.
+- Audiveris es externo y su instalación/compilación depende de Java.
+- Sin GPU, la transcripción puede tardar varios minutos.
+- Los packs se guardan en local; no hay sincronización entre equipos.
 
 ## Licencia
 
-Código de Midiforja: MIT. Motor de transcripción Basic Pitch (Spotify): Apache-2.0.
+Código de Midiforja: MIT. Basic Pitch (Spotify): Apache-2.0. Audiveris: Apache-2.0.

@@ -1,18 +1,25 @@
+# Core backend
 fastapi==0.115.6
 uvicorn==0.34.0
 python-multipart==0.0.20
-basic-pitch==0.4.0
 numpy==1.26.4
 librosa==0.11.0
+
+# Transcripción (Spotify Basic Pitch, Apache-2.0). Opcional en tests.
+basic-pitch==0.4.0
 mir-eval==0.8.2
-pretty_midi==0.2.11.post0
+
+# Carga de backend/.env (opcional; sin ella se usan variables del sistema)
+python-dotenv==1.0.1
+
 # "Eliminar la voz" (Meta 1) - Demucs + PyTorch CPU. Ojo: instala desde el
 # índice CPU de PyTorch para evitar conflictos/el backend default de torchaudio:
 #   pip install torch==2.3.1 torchaudio==2.3.1 --index-url https://download.pytorch.org/whl/cpu
 #   pip install demucs==4.0.1
 demucs==4.0.1
+
 # dev / tests
 pytest==9.1.1
+pytest-asyncio==1.3.0
 httpx==0.28.1
-
 websockets==15.0

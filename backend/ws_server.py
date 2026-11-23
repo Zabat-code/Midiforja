@@ -1,28 +1,28 @@
 #!/usr/bin/env python3
 """
-Hardened WebSocket server for MidiMate ↔ Midiforja.
+Hardened WebSocket hub for MidiMate <-> Midiforja.
 
-Features:
-  - Envelope with event_id, sequence, timestamp
-  - Reconnect/reconnect_count tracking
-  - Duplicate detection (dedup ring buffer)
-  - Connection state (registered/active/reconnecting/stale/closed)
-  - Heartbeat timeout detection
-  - State resync on connect/reconnect
+Compatible con ambos formatos de cable:
+  - nuevo: {type, payload, sequence, event_id, timestamp}
+  - antiguo: {event, data, ...}
 
-QA scenarios:
-  - kill backend during WS → client reconnects, receives state
-  - duplicate events → dedup by event_id
-  - out-of-order events → sequence tracking
+El cliente moderno de MidiMate exige que `sequence` sea consecutivo POR
+CONEXIÓN (empieza en 1) y que cada mensaje tenga `event_id`. Por eso el contador
+ya no es global.
 """
-import json
-import time
+
+from __future__ import annotations
+
 import asyncio
-import uuid
+import json
 import logging
-from typing import Dict, Optional, Any, List
+import os
+import time
+import uuid
+from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("midiforja.ws")
 
@@ -43,17 +43,30 @@ class Envelope:
     sequence: int = 0
     timestamp: float = field(default_factory=lambda: time.time())
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> Dict[str, Any]:
+        # `event`/`data` are aliases so older MidiMate builds keep working.
         return {
             "type": self.type,
-            "event_id": self.event_id,
+            "event": self.type,
             "sequence": self.sequence,
+            "event_id": self.event_id,
             "timestamp": self.timestamp,
             "payload": self.payload,
+            "data": self.payload,
         }
 
     def serialize(self) -> str:
         return json.dumps(self.to_dict())
+
+    @classmethod
+    def from_dict(cls, msg: Dict[str, Any]) -> "Envelope":
+        return cls(
+            type=msg.get("type") or msg.get("event") or "",
+            payload=msg.get("payload", msg.get("data", {})),
+            event_id=msg.get("event_id") or str(uuid.uuid4()),
+            sequence=int(msg.get("sequence") or 0),
+            timestamp=float(msg.get("timestamp") or time.time()),
+        )
 
 
 @dataclass
@@ -62,35 +75,60 @@ class Connection:
     client_type: str
     ws: Any
     state: ConnState = ConnState.REGISTERED
-    connected_at: float = 0.0
-    last_heartbeat: float = 0.0
+    connected_at: float = field(default_factory=time.time)
+    last_heartbeat: float = field(default_factory=time.time)
     last_sequence: int = 0
+    out_sequence: int = 0
     reconnect_count: int = 0
 
-    def __post_init__(self):
-        self.connected_at = time.time()
-        self.last_heartbeat = time.time()
+    def next_sequence(self) -> int:
+        self.out_sequence += 1
+        return self.out_sequence
 
 
 class HardenedHub:
     HEARTBEAT_TIMEOUT = 30.0
+    HEARTBEAT_INTERVAL = 10.0
     MAX_RECONNECT = 5
     DEDUP_WINDOW = 1000
 
     def __init__(self):
+        self.HEARTBEAT_INTERVAL = float(
+            os.environ.get("MIDIFORJA_WS_HEARTBEAT_INTERVAL", self.HEARTBEAT_INTERVAL)
+        )
+        self.HEARTBEAT_TIMEOUT = float(
+            os.environ.get("MIDIFORJA_WS_HEARTBEAT_TIMEOUT", self.HEARTBEAT_TIMEOUT)
+        )
         self.connections: Dict[str, Connection] = {}
         self._midi_state: Dict[str, Any] = {
             "playing": False, "position": 0.0, "tempo": 120,
             "current_file": None, "note_count": 0, "duration": 0.0,
             "tracks": [], "loop": False, "volume": 80,
         }
-        self._sequence = 0
-        self._seen_events: List[str] = []
+        self._seen_events: deque = deque(maxlen=self.DEDUP_WINDOW)
+        self._seen_set = set()
+        self._heartbeat_task: Optional[asyncio.Task] = None
 
+    # ---- sequences / dedup -------------------------------------------------
     def _next_seq(self) -> int:
-        self._sequence += 1
-        return self._sequence
+        """Compatibility helper: next sequence for the 'most recent' client."""
+        conns = list(self.connections.values())
+        return conns[-1].next_sequence() if conns else 1
 
+    def is_duplicate(self, event_id: str) -> bool:
+        return bool(event_id) and event_id in self._seen_set
+
+    def mark_seen(self, event_id: str) -> None:
+        if not event_id or event_id in self._seen_set:
+            return
+        self._seen_events.append(event_id)
+        self._seen_set.add(event_id)
+        if len(self._seen_events) == self._seen_events.maxlen:
+            dropped = self._seen_events[0]
+            # deque already rotated by the time we get here; keep set in sync
+            self._seen_set.intersection_update(self._seen_events)
+
+    # ---- connection lifecycle ---------------------------------------------
     async def register(self, client_id: str, client_type: str, ws) -> Connection:
         existing = self.connections.get(client_id)
         if existing:
@@ -98,21 +136,19 @@ class HardenedHub:
             existing.ws = ws
             existing.reconnect_count += 1
             existing.last_heartbeat = time.time()
-            logger.info(f"Reconnected {client_type} {client_id} (count={existing.reconnect_count})")
+            existing.out_sequence = 0  # reinicia la secuencia tras reconexión
             conn = existing
+            logger.info("Reconnected %s %s (count=%s)", client_type, client_id,
+                        conn.reconnect_count)
         else:
             conn = Connection(client_id=client_id, client_type=client_type, ws=ws)
             conn.state = ConnState.ACTIVE
             self.connections[client_id] = conn
-            logger.info(f"Registered {client_type} {client_id}")
+            logger.info("Registered %s %s", client_type, client_id)
 
-        # Always send current state on register/reconnect
         await self._send_to(conn, Envelope(
-            type="state_response",
-            payload=self._midi_state,
-            sequence=self._next_seq(),
+            type="state_response", payload=self._midi_state,
         ))
-
         await self.broadcast(Envelope(
             type="client_joined",
             payload={
@@ -122,34 +158,45 @@ class HardenedHub:
                 "reconnect_count": conn.reconnect_count,
             },
         ), exclude=client_id)
-
         return conn
 
-    async def unregister(self, client_id: str, reason: str = "unknown"):
-        conn = self.connections.pop(client_id, None)
-        if conn:
-            conn.state = ConnState.CLOSED
-            logger.info(f"Unregistered {conn.client_type} {client_id}: {reason}")
-            await self.broadcast(Envelope(
-                type="client_left",
-                payload={
-                    "client_id": client_id,
-                    "client_type": conn.client_type,
-                    "total_clients": len(self.connections),
-                    "reason": reason,
-                },
-            ))
+    async def unregister(self, client_id: str, reason: str = "unknown", ws=None):
+        """Remove a client. If `ws` is given, only remove if it is still current.
 
-    async def _send_to(self, conn: Connection, envelope: Envelope):
-        envelope.sequence = self._next_seq()
-        try:
-            msg = envelope.serialize()
-            await conn.ws.send_text(msg)
+        This prevents an old socket's `finally` from deleting a newer connection
+        that reused the same client_id after a reconnect.
+        """
+        conn = self.connections.get(client_id)
+        if not conn or (ws is not None and conn.ws is not ws):
+            return
+        self.connections.pop(client_id, None)
+        conn.state = ConnState.CLOSED
+        logger.info("Unregistered %s %s: %s", conn.client_type, client_id, reason)
+        await self.broadcast(Envelope(
+            type="client_left",
+            payload={
+                "client_id": client_id,
+                "client_type": conn.client_type,
+                "total_clients": len(self.connections),
+                "reason": reason,
+            },
+        ))
+
+    def touch(self, client_id: str) -> None:
+        conn = self.connections.get(client_id)
+        if conn:
             conn.last_heartbeat = time.time()
-        except Exception as e:
-            logger.warning(f"Send failed to {conn.client_id}: {e}")
+
+    # ---- sending -----------------------------------------------------------
+    async def _send_to(self, conn: Connection, envelope: Envelope):
+        envelope.sequence = conn.next_sequence()
+        try:
+            await conn.ws.send_text(envelope.serialize())
+            conn.last_heartbeat = time.time()
+        except Exception as exc:
+            logger.warning("Send failed to %s: %s", conn.client_id, exc)
             conn.state = ConnState.STALE
-            await self.unregister(conn.client_id, reason="send_failure")
+            await self.unregister(conn.client_id, reason="send_failure", ws=conn.ws)
 
     async def send_to(self, client_id: str, envelope: Envelope):
         conn = self.connections.get(client_id)
@@ -157,40 +204,52 @@ class HardenedHub:
             await self._send_to(conn, envelope)
 
     async def broadcast(self, envelope: Envelope, exclude: Optional[str] = None):
-        envelope.sequence = self._next_seq()
         disconnected = []
         for cid, conn in list(self.connections.items()):
-            if cid == exclude:
-                continue
-            if conn.state != ConnState.ACTIVE:
+            if cid == exclude or conn.state != ConnState.ACTIVE:
                 continue
             try:
-                msg = envelope.serialize()
-                await conn.ws.send_text(msg)
+                envelope.sequence = conn.next_sequence()
+                await conn.ws.send_text(envelope.serialize())
                 conn.last_heartbeat = time.time()
             except Exception:
-                disconnected.append(cid)
-        for cid in disconnected:
-            await self.unregister(cid, reason="broadcast_failure")
+                disconnected.append((cid, conn.ws))
+        for cid, ws in disconnected:
+            await self.unregister(cid, reason="broadcast_failure", ws=ws)
 
-    def is_duplicate(self, event_id: str) -> bool:
-        return event_id in self._seen_events
-
-    def mark_seen(self, event_id: str):
-        self._seen_events.append(event_id)
-        if len(self._seen_events) > self.DEDUP_WINDOW:
-            self._seen_events = self._seen_events[-self.DEDUP_WINDOW // 2:]
-
+    # ---- heartbeat ---------------------------------------------------------
     async def heartbeat_check(self):
         now = time.time()
-        stale = []
-        for cid, conn in list(self.connections.items()):
-            if now - conn.last_heartbeat > self.HEARTBEAT_TIMEOUT:
-                conn.state = ConnState.STALE
-                stale.append(cid)
-        for cid in stale:
-            await self.unregister(cid, reason="heartbeat_timeout")
+        stale = [
+            (cid, conn.ws) for cid, conn in list(self.connections.items())
+            if now - conn.last_heartbeat > self.HEARTBEAT_TIMEOUT
+        ]
+        for cid, ws in stale:
+            await self.unregister(cid, reason="heartbeat_timeout", ws=ws)
 
+    async def heartbeat_loop(self):
+        while True:
+            await asyncio.sleep(self.HEARTBEAT_INTERVAL)
+            await self.heartbeat_check()
+            if self.connections:
+                await self.broadcast(Envelope(
+                    type="heartbeat", payload={"ts": time.time()},
+                ))
+
+    def start_heartbeat(self):
+        if self._heartbeat_task is None or self._heartbeat_task.done():
+            self._heartbeat_task = asyncio.create_task(self.heartbeat_loop())
+
+    async def stop_heartbeat(self):
+        if self._heartbeat_task and not self._heartbeat_task.done():
+            self._heartbeat_task.cancel()
+            try:
+                await self._heartbeat_task
+            except asyncio.CancelledError:
+                pass
+        self._heartbeat_task = None
+
+    # ---- shared state ------------------------------------------------------
     def update_state(self, **kwargs) -> Dict[str, Any]:
         changed = {}
         for k, v in kwargs.items():
@@ -211,22 +270,23 @@ class HardenedHub:
                 "connected_at": c.connected_at,
                 "reconnect_count": c.reconnect_count,
                 "last_heartbeat": c.last_heartbeat,
+                "sequence": c.out_sequence,
             }
             for c in self.connections.values()
         ]
 
     def get_stats(self) -> Dict[str, Any]:
-        states = {}
+        states: Dict[str, int] = {}
         for c in self.connections.values():
-            s = c.state.value
-            states[s] = states.get(s, 0) + 1
+            states[c.state.value] = states.get(c.state.value, 0) + 1
         return {
             "total_connections": len(self.connections),
             "by_state": states,
             "seen_events_buffer": len(self._seen_events),
-            "sequence": self._sequence,
+            "sequences": {cid: c.out_sequence for cid, c in self.connections.items()},
         }
 
 
-# Global hub instance
+# Global hub and backwards-compatible alias.
 hub = HardenedHub()
+WebSocketHub = HardenedHub

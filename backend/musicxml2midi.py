@@ -6,9 +6,10 @@ Self-contained: parses the MusicXML DOM with xml.etree and emits note events
 
 Timing model:
   * <attributes><divisions>N</divisions> = ticks per quarter note.
-  * <note><duration>D</duration> = D ticks.
-  * Tempo from <sound tempo="BPM"> or default 120 BPM.
-  * Position is tracked per (staff, voice) cursor; <chord/> notes share a start.
+  * <note><duration>D</duration> = D ticks (in the divisions active at that point).
+  * Tempo from <sound tempo="BPM"> (often nested inside <direction>) or 120 BPM.
+  * Internally the cursor is kept in QUARTER NOTES, so changing <divisions>
+    mid-score never changes the musical duration of what came before.
 """
 
 import xml.etree.ElementTree as ET
@@ -30,24 +31,64 @@ def _strip_ns(tag: str) -> str:
     return tag.split("}", 1)[-1] if "}" in tag else tag
 
 
-def musicxml_to_notes(xml_text: str):
-    """Return list of (start_sec, end_sec, pitch, velocity)."""
+def _score_root(xml_text: str):
     root = ET.fromstring(xml_text)
-    # find the actual score root if wrapped
-    score = root
     if _strip_ns(root.tag) != "score-partwise":
         for el in root.iter():
             if _strip_ns(el.tag) == "score-partwise":
-                score = el
+                return el
+    return root
+
+
+def musicxml_tempo(xml_text: str, default: float = 120.0) -> float:
+    """Devuelve el primer tempo (BPM) declarado en el MusicXML."""
+    for el in _score_root(xml_text).iter():
+        if _strip_ns(el.tag) == "sound":
+            tempo = el.get("tempo")
+            if tempo:
+                try:
+                    value = float(tempo)
+                    if value > 0:
+                        return value
+                except ValueError:
+                    pass
+    return default
+
+
+class _TempoMap:
+    """Convierte posiciones en quarter notes a segundos con cambios de tempo."""
+
+    def __init__(self, default_bpm: float = 120.0):
+        self.changes = [(0.0, float(default_bpm))]
+        self.default = float(default_bpm)
+
+    def add(self, beat: float, bpm: float) -> None:
+        if bpm > 0:
+            self.changes.append((max(0.0, float(beat)), float(bpm)))
+            self.changes.sort(key=lambda x: x[0])
+
+    def to_seconds(self, beat: float) -> float:
+        seconds = 0.0
+        prev_beat = 0.0
+        bpm = self.default
+        for change_beat, change_bpm in self.changes:
+            if change_beat > beat:
                 break
+            seconds += (change_beat - prev_beat) * 60.0 / bpm
+            prev_beat = change_beat
+            bpm = change_bpm
+        seconds += (beat - prev_beat) * 60.0 / bpm
+        return seconds
 
-    divisions = 480  # default ticks per quarter
-    tempo = 120.0     # default BPM
-    secs_per_tick = (60.0 / tempo) / divisions
 
+def musicxml_to_notes(xml_text: str):
+    """Return list of (start_sec, end_sec, pitch, velocity)."""
+    score = _score_root(xml_text)
+    tempo_map = _TempoMap(musicxml_tempo(xml_text))
+    divisions = 480  # ticks per quarter note
     notes = []
-    # cursor per (staff, voice)
-    cursors = {}
+    cursors = {}     # (staff, voice) -> posición en quarter notes
+    last_starts = {}  # (staff, voice) -> inicio de la última nota (para <chord/>)
 
     for part in score.iter():
         if _strip_ns(part.tag) != "part":
@@ -55,23 +96,28 @@ def musicxml_to_notes(xml_text: str):
         for measure in part:
             if _strip_ns(measure.tag) != "measure":
                 continue
-            for elem in measure:
+            part_beats = min(cursors.values()) if cursors else 0.0
+            for elem in measure.iter():
                 tag = _strip_ns(elem.tag)
+
                 if tag == "attributes":
                     for a in elem.iter():
                         if _strip_ns(a.tag) == "divisions":
                             try:
-                                divisions = int(a.text)
+                                value = int(a.text)
+                                if value > 0:
+                                    divisions = value
                             except (TypeError, ValueError):
                                 pass
+
                 elif tag == "sound":
-                    tp = elem.get("tempo")
-                    if tp:
+                    tempo = elem.get("tempo")
+                    if tempo:
                         try:
-                            tempo = float(tp)
-                            secs_per_tick = (60.0 / tempo) / divisions
+                            tempo_map.add(part_beats, float(tempo))
                         except ValueError:
                             pass
+
                 elif tag == "note":
                     is_chord = False
                     is_rest = False
@@ -82,7 +128,7 @@ def musicxml_to_notes(xml_text: str):
                     voice = "1"
                     staff = "1"
                     velocity = 80
-                    for child in elem:
+                    for child in elem.iter():
                         ct = _strip_ns(child.tag)
                         if ct == "chord":
                             is_chord = True
@@ -94,9 +140,15 @@ def musicxml_to_notes(xml_text: str):
                                 if pt == "step":
                                     step = p.text
                                 elif pt == "octave":
-                                    octave = int(p.text)
+                                    try:
+                                        octave = int(p.text)
+                                    except (TypeError, ValueError):
+                                        pass
                                 elif pt == "alter":
-                                    alter = int(float(p.text))
+                                    try:
+                                        alter = int(float(p.text))
+                                    except (TypeError, ValueError):
+                                        pass
                         elif ct == "duration":
                             try:
                                 duration = int(child.text or 0)
@@ -107,26 +159,40 @@ def musicxml_to_notes(xml_text: str):
                         elif ct == "staff":
                             staff = (child.text or "1").strip()
                         elif ct == "dynamics":
-                            # crude: use first <other-dynamics> or <f/p> -> velocity
                             txt = (child.text or "").strip().lower()
                             velocity = {"pp": 40, "p": 55, "mp": 70, "mf": 85,
                                         "f": 100, "ff": 115}.get(txt, velocity)
-                    if is_rest or step is None or octave is None:
-                        # advance cursor by duration even on rest
-                        key = (staff, voice)
-                        cursors[key] = cursors.get(key, 0) + duration
-                        continue
+                            for d in child:
+                                dt = _strip_ns(d.tag)
+                                if dt in ("pp", "p", "mp", "mf", "f", "ff"):
+                                    velocity = {"pp": 40, "p": 55, "mp": 70, "mf": 85,
+                                                "f": 100, "ff": 115}[dt]
+
+                    beats = duration / float(divisions) if divisions else 0.0
                     key = (staff, voice)
-                    start_tick = cursors.get(key, 0)
-                    if not is_chord:
-                        cursors[key] = start_tick + duration
+                    if is_chord:
+                        # Las notas de un acorde comparten el ataque de la nota anterior.
+                        start_beat = last_starts.get(key, cursors.get(key, 0.0))
+                    else:
+                        start_beat = cursors.get(key, 0.0)
+                        cursors[key] = start_beat + beats
+                        last_starts[key] = start_beat
+                    if is_rest or step is None or octave is None:
+                        continue
                     pitch = _step_to_pitch(step, octave, alter)
-                    start_sec = start_tick * secs_per_tick
-                    end_sec = (start_tick + duration) * secs_per_tick
-                    notes.append((start_sec, end_sec, pitch, int(max(1, min(127, velocity)))))
+                    notes.append((
+                        round(tempo_map.to_seconds(start_beat), 4),
+                        round(tempo_map.to_seconds(start_beat + beats), 4),
+                        pitch,
+                        int(max(1, min(127, velocity))),
+                    ))
+    notes.sort(key=lambda n: (n[0], n[2]))
     return notes
 
 
-def musicxml_to_midi(xml_text: str, ticks_per_beat: int = 480, bpm: int = 120, channel: int = 0) -> bytes:
+def musicxml_to_midi(xml_text: str, ticks_per_beat: int = 480, bpm: int = None,
+                     channel: int = 0) -> bytes:
     notes = musicxml_to_notes(xml_text)
+    if bpm is None:
+        bpm = int(round(musicxml_tempo(xml_text)))
     return midiwriter.write_midi(notes, ticks_per_beat=ticks_per_beat, bpm=bpm, channel=channel)
