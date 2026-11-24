@@ -65,11 +65,26 @@ def _midi_name(m):
     return f"{names[m % 12]}{m // 12 - 1}"
 
 
+def find_midimate_parser():
+    """Locate MidiMate's midi.js on Windows, Linux/macOS or via MIDIMATE_MIDI."""
+    repo_parent = os.path.dirname(os.path.dirname(HERE))
+    candidates = [
+        os.environ.get("MIDIMATE_MIDI", ""),
+        r"F:\ia.proyectos\MidiMate\Midimate\src\midi.js",
+        os.path.join(repo_parent, "MidiMate", "Midimate", "src", "midi.js"),
+        os.path.join(repo_parent, "MidiMate", "src", "midi.js"),
+    ]
+    for path in candidates:
+        if path and os.path.exists(path):
+            return os.path.abspath(path)
+    return None
+
+
 def validate_with_midimate_parser(mid_bytes):
     """Load MidiMate's src/midi.js parser (ESM) via Node and run parseMidi+midiToNotes."""
     import subprocess, textwrap
-    midimate_midi = r"F:\ia.proyectos\MidiMate\src\midi.js"
-    if not os.path.exists(midimate_midi):
+    midimate_midi = find_midimate_parser()
+    if not midimate_midi:
         return "(MidiMate parser not found; skipped cross-check)"
     import shutil
     # Keep everything under HERE (a plain Windows path) so MSYS/bash node

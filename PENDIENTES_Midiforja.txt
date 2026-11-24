@@ -15,10 +15,19 @@
 - Verificacion: `python3 -m pytest -q` -> 36 passed; `node --check` OK en
   src/main.js y src/i18n.js. Sin errores detectados en las pruebas.
 - Config: backend/.env.example actualizado (DB, rate limit, CORS, WS, rutas
-  no-Windows); requirements.txt con pytest-asyncio y python-dotenv.
-- PENDIENTE: commit + push a feature/api-ws-integration; limpiar token del
-  remote y ofrecer revocacion; E2E real de Basic Pitch (no instalado en el
-  Python del sistema).
+  no-Windows); requirements.txt con pytest-asyncio, python-dotenv y setuptools<81.
+- Publicacion: HECHA. Commit 75cfae4 pusheado a feature/api-ws-integration;
+  remote limpio en HTTPS; tokens temporales borrados (revocar los que se
+  usaron para API/push, ya no estan en disco).
+- E2E real de transcripcion: HECHO en Linux. basic-pitch 0.4.0 es multiplataforma;
+  requiere Python 3.11 (tensorflow<2.15.1 no tiene build para 3.12), numpy 1.26.4
+  y setuptools<81 (pkg_resources). Instalado en venv local: test_e2e.py -> 8/8
+  notas y 25 s del .opus de prueba -> 131 notas, A major, 142.9 BPM, .mid y pack
+  guardados en SQLite. test_e2e.py localiza el parser de MidiMate en Linux y el
+  cross-check devuelve 8 notas / 480 ticks por beat. No hizo falta clonar codigo
+  del repo oficial ni buscar variantes de Linux.
+- PENDIENTE: separacion multi-instrumento real (Demucs + basic-pitch por stem);
+  Audiveris/OMR solo verificado en Windows.
 
 ## HISTORIAL (2026-08-18, fix aplicado + verificado)
 - BUG ORIGINAL (revisión): "assert bug en test". REALIDAD: el test
@@ -42,6 +51,8 @@
   (estaban fuera del alcance del bug reportado).
 
 ## LOG DE CAMBIOS
+- 2026-11-23: E2E real de Basic Pitch en Linux (Python 3.11), test_e2e.py OK y
+  transcripcion real del .opus del repo. README/requirements/PENDIENTES al dia.
 - 2026-11-23: v0.5-study (analisis musical, pack JSON, SQLite, UI de biblioteca,
   hub WS endurecido). 36 passed. .env.example, requirements, PLAN y README al dia.
 - 2026-08-18: fix test_midiforja.py (sys.path + ruta MidiMate). 12 passed. Creado.

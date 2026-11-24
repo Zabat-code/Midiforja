@@ -135,14 +135,19 @@ D. Publicación  [EN CURSO]
    - [x] Repo local listo (creds/IP escaneados, .venv/node_modules ignorados).
    - [x] Repo creado en GitHub (Zabat-code/Midiforja); rama de trabajo
      `feature/api-ws-integration`.
-   - [ ] Hacer commit de v0.5-study y pushear (faltan `e98ae10`, `f0eb75a` y el
-     commit nuevo).
-   - [ ] Limpiar el token del remote y avisar al usuario para revocarlo.
+   - [x] Commit de v0.5-study pusheado: `75cfae4` en `feature/api-ws-integration`.
+   - [x] Token del remote limpiado; copias locales borradas. Si se usaron tokens
+     para API/push, revocarlos en GitHub Settings.
    - [ ] HARD-RELOAD note para quien pruebe el frontend.
 
 E. Análisis y pack de estudio (v0.5)  [HECHO]
    - [x] Lector SMF propio y análisis desde bytes `.mid` (audio, OMR y MIDI).
    - [x] Pack de estudio JSON + base SQLite con búsqueda y descarga.
+   - [x] E2E real de transcripción en Linux: Basic Pitch 0.4.0 con Python 3.11,
+     NumPy 1.26.4 y setuptools<81. `test_e2e.py` OK (8/8 notas y cross-check con
+     el parser de MidiMate: 480 ticks/beat); 25 s del `.opus` de prueba → 131
+     notas, A major, 142,9 BPM, `.mid` + pack en SQLite.
+     El paquete PyPI es el código oficial de Spotify (Apache-2.0), multiplataforma.
    - [x] UI: pestaña de análisis, resumen y biblioteca (ES/EN).
    - [x] Suite ampliada: 36 tests, 0 errores detectados.
    - [ ] E2E real de transcripción con Basic Pitch instalado en el venv (el

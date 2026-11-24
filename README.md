@@ -36,7 +36,10 @@
 
 ## Requisitos
 
-- Python 3.11+ (usa `backend/.venv` o un venv en la raíz).
+- Python **3.11** para la transcripción en Linux (usa `backend/.venv` en Windows o
+  un venv en la raíz). `basic-pitch==0.4.0` fija `tensorflow<2.15.1`, que no tiene
+  build para Python 3.12+; el resto del backend sí funciona en 3.12.
+- `setuptools<81` en el venv: Basic Pitch usa `pkg_resources`, eliminado en 84.
 - Node 18+ y npm para Vite.
 - `ffmpeg` en el PATH (decodea Opus/OGG/MP4).
 - Opcionales: `basic-pitch` (transcripción), `mir_eval` (calidad), Demucs+torch
@@ -93,10 +96,15 @@ Abre `http://127.0.0.1:5174/`. También existen `run_backend.bat` y `run_fronten
 Ejemplo:
 
 ```bash
-curl -F "file=@mi_piano.mp3" http://127.0.0.1:8000/api/analyze-midi
+# Analizar un MIDI existente (el pack se guarda en SQLite):
+curl -F "file=@mi_piano.mid" http://127.0.0.1:8000/api/analyze-midi
+
+# Transcribir audio: la respuesta ES el .mid y también guarda su pack:
+curl -F "file=@mi_piano.mp3" -o salida.mid http://127.0.0.1:8000/api/transcribe
 ```
 
-La respuesta incluye `X-Analysis-Id`, `X-Note-Count` y `X-Midi-Url`.
+La respuesta de transcripción incluye `X-Analysis-Id`, `X-Note-Count` y
+`X-Midi-Url`; el pack se consulta después en `/api/study-pack/{id}`.
 
 ## Configuración
 
@@ -118,6 +126,13 @@ python -m pytest -q
 La suite cubre escritor/lector MIDI, `musicxml2midi`, análisis musical, base SQLite,
 endpoints y el protocolo WS. Sin errores detectados en las pruebas. La transcripción
 real con Basic Pitch se valida aparte en `test_e2e.py` (requiere el modelo instalado).
+
+E2E real verificado en Linux (Python 3.11 + `basic-pitch==0.4.0`, TensorFlow 2.14,
+NumPy 1.26.4): `test_e2e.py` → 8/8 notas y cross-check con el parser de MidiMate
+(480 ticks/beat), y 25 s del `.opus` de prueba del repo → 131 notas, A major,
+142,9 BPM, con el `.mid` y su pack guardados en SQLite. Basic Pitch
+es el paquete oficial multiplataforma de Spotify (Apache-2.0); no hace falta clonar
+su código ni buscar un sustituto para Linux.
 
 ## Estructura
 
